@@ -1,0 +1,10 @@
+aiogram>=3.4,<4
+aiosqlite>=0.19
+requests>=2.31
+numpy==1.26.4
+faster-whisper==1.0.3
+ctranslate2==4.4.0
+onnxruntime==1.17.1
+tokenizers<0.20
+huggingface-hub<0.26
+piper-tts>=1.3

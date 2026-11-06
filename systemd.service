@@ -1,0 +1,18 @@
+# Альтернатива Docker: запуск как systemd-сервис (без контейнера).
+# Установка: скопируйте в /etc/systemd/system/english-bot.service,
+# выполните: systemctl daemon-reload && systemctl enable --now english-bot
+[Unit]
+Description=English Telegram Bot
+After=network-online.target
+
+[Service]
+Type=simple
+User=botuser
+WorkingDirectory=/opt/english-bot
+EnvironmentFile=/opt/english-bot/.env
+ExecStart=/usr/bin/python3 /opt/english-bot/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

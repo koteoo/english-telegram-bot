@@ -1,0 +1,49 @@
+services:
+  # Основной контейнер бота (лёгкий: ~1 CPU / 1 GB RAM хватит на сотни пользователей)
+  bot:
+    build: .
+    restart: unless-stopped        # автоперезапуск при падении
+    env_file: .env                 # BOT_TOKEN, GROQ_API_KEY и т.д.
+    volumes:
+      - ./data_db:/app/db                  # база SQLite переживает пересборку образа
+      - models_cache:/app/models-cache     # кэш faster-whisper (base ~150 MB) — скачивается один раз
+    networks: [botnet]
+
+  # Профиль "ollama": локальные бесплатные LLM + распознавание речи на этом же сервере.
+  # Запуск: docker compose --profile ollama up -d
+  # В .env тогда укажите:
+  #   OPENAI_API_KEY=ollama
+  #   OPENAI_BASE_URL=http://ollama:11434/v1
+  #   OPENAI_MODEL=qwen2.5:7b-instruct-q4_K_M
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks: [botnet]
+    # Для моделей 13B+ добавьте GPU (NVIDIA):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Разовая загрузка модели (выполнить один раз после первого старта):
+  #   docker compose run --rm ollama-loader pull qwen2.5:7b-instruct-q4_K_M
+  ollama-loader:
+    image: ollama/ollama:latest
+    profiles: ["tools"]
+    depends_on: [ollama]
+    entrypoint: ["ollama", "pull"]
+    command: ["qwen2.5:7b-instruct-q4_K_M"]
+    networks: [botnet]
+
+volumes:
+  ollama_data:
+  models_cache:
+
+networks:
+  botnet:

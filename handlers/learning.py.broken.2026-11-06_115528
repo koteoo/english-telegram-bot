@@ -1,0 +1,236 @@
+"""Хендлеры для обучения: карточки, квиз, добавление слов, прогресс, уровень."""
+import logging
+from aiogram import Router, F, Bot
+from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from db import Database
+import dictionary_api
+from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
+from keyboards import get_main_menu_keyboard, get_flashcard_keyboard, get_quiz_keyboard
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+class AddWordState(StatesGroup):
+    waiting_for_word = State()
+
+# ---------------- Команды и меню ----------------
+@router.message(Command("menu"))
+async def cmd_menu(message: Message, db: Database):
+    await message.answer("🏠 Главное меню:", reply_markup=get_main_menu_keyboard())
+
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    help_text = (
+        "🇬🇧 <b>English Learning Bot</b>\n\n"
+        "📚 <b>/start</b> — Регистрация и главное меню\n"
+        "🃏 <b>Flashcards</b> — Повторение слов по методу интервалов\n"
+        "✍️ <b>Quiz</b> — Мини-тест на грамматику\n"
+        "➕ <b>Add word</b> — Отправь английское слово, и я найду его перевод и пример!\n"
+        "📊 <b>Progress</b> — Твоя статистика\n"
+        "🎯 <b>Level</b> — Изменить уровень сложности\n"
+        "💎 <b>/premium</b> — Тарифы и возможности"
+    )
+    await message.answer(help_text)
+
+# ---------------- Добавление слова (Новая логика) ----------------
+@router.message(F.text == "➕ Add word")
+@router.message(Command("add"))
+async def cmd_add_word_start(message: Message, state: FSMContext):
+    await state.set_state(AddWordState.waiting_for_word)
+    await message.answer(
+        "✍️ Введите английское слово или фразу, которую хотите добавить в колоду.\n"
+        "<i>Я автоматически найду перевод и пример использования!</i>\n\n"
+        "Для отмены нажмите /cancel или кнопку 'Отмена' в меню.",
+    )
+
+@router.message(Command("cancel"))
+@router.message(F.text == "❌ Отмена")
+async def cmd_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Действие отменено.", reply_markup=get_main_menu_keyboard())
+
+@router.message(AddWordState.waiting_for_word)
+async def process_add_word(message: Message, state: FSMContext, db: Database):
+    word_to_add = message.text.strip()
+    
+    # Простая валидация: только буквы и пробелы, длина 2-50 символов
+    if not word_to_add.replace(" ", "").isalpha() or len(word_to_add) > 50:
+        await message.answer("⚠️ Пожалуйста, введите корректное английское слово или фразу (только буквы).")
+        return
+
+    word_lower = word_to_add.lower()
+    user_level = await db.get_level(message.from_user.id)
+
+    # 1. Сначала проверяем локальный словарь (быстро и надежно)
+    local_word = next(
+        ((w, t, e) for w, t, e in VOCABULARY.get(user_level, []) if w.lower() == word_lower),
+        None
+    )
+
+    if local_word:
+        w, t, e = local_word
+        success = await db.add_word_to_deck(message.from_user.id, w, translation=t, example=e)
+        if success:
+            await message.answer(
+                f"✅ Слово <b>{w.capitalize()}</b> успешно добавлено в вашу колоду!\n\n"
+                f"📖 {t}\n💬 <i>{e}</i>",
+                reply_markup=get_main_menu_keyboard(),
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer("ℹ️ Это слово уже есть в вашей колоде.", reply_markup=get_main_menu_keyboard())
+        await state.clear()
+        return
+
+    # 2. Если нет в локальном, запрашиваем внешнее API
+    await message.answer("🔍 Ищу значение и пример для этого слова...")
+    api_data = await dictionary_api.fetch_word_details(word_lower)
+    
+    if api_data:
+        success = await db.add_word_to_deck(
+            message.from_user.id,
+            api_data["word"],
+            translation=api_data["translation"],
+            example=api_data["example"]
+        )
+        if success:
+            await message.answer(
+                f"✅ Слово <b>{api_data['word'].capitalize()}</b> добавлено!\n\n"
+                f"📖 {api_data['translation']}\n"
+                f"💬 <i>{api_data['example']}</i>",
+                reply_markup=get_main_menu_keyboard(),
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer("ℹ️ Это слово уже есть в вашей колоде.", reply_markup=get_main_menu_keyboard())
+    else:
+        # 3. Fallback, если API недоступны
+        await db.add_word_to_deck(message.from_user.id, word_to_add, translation="Requires manual translation", example="")
+        await message.answer(
+            f"✅ Слово <b>{word_to_add}</b> добавлено, но не удалось получить перевод автоматически.\n"
+            f"Вы можете изучить его самостоятельно.",
+            reply_markup=get_main_menu_keyboard()
+        )
+    
+    await state.clear()
+
+# ---------------- Flashcards (Интервальное повторение) ----------------
+@router.message(F.text == "🃏 Flashcards")
+async def cmd_flashcards(message: Message, db: Database):
+    user_id = message.from_user.id
+    level = await db.get_level(user_id)
+    due_cards = await db.due_cards(user_id, level, limit=1)
+    
+    if not due_cards:
+        await message.answer(
+            "🎉 Отлично! На сегодня карточек для повторения нет.\n"
+            "Вы можете добавить новые слова или пройти тест.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return
+        
+    card = due_cards[0]
+    text = (
+        f"📝 Слово: <b>{card.word.capitalize()}</b>\n\n"
+        f"📖 Перевод: {card.translation}\n"
+        f"💬 Пример: <i>{card.example}</i>\n\n"
+        "Вы помните это слово?"
+    )
+    await message.answer(text, reply_markup=get_flashcard_keyboard(card.word), parse_mode="HTML")
+
+@router.callback_query(F.data.startswith("review_"))
+async def cb_review_card(callback: CallbackQuery, db: Database):
+    await callback.answer()
+    action, word = callback.data.split("_", 1)
+    user_id = callback.from_user.id
+    is_correct = action == "review_correct"
+    
+    new_box = await db.review_card(user_id, word, is_correct)
+    
+    if is_correct:
+        await callback.message.edit_text(
+            f"✅ Верно! Слово <b>{word.capitalize()}</b> перемещено на следующий интервал (коробка {new_box}).",
+            reply_markup=get_main_menu_keyboard()
+        )
+    else:
+        await callback.message.edit_text(
+            f"❌ Не беда! Слово <b>{word.capitalize()}</b> возвращено в первую коробку для скорейшего повторения.",
+            reply_markup=get_main_menu_keyboard()
+        )
+
+# ---------------- Квиз ----------------
+@router.message(F.text == "✍️ Quiz")
+async def cmd_quiz(message: Message, db: Database):
+    user_id = message.from_user.id
+    if not await db.within_limit(user_id, "quiz", 3):
+        await message.answer("⚠️ Лимит бесплатных квизов на сегодня исчерпан. Попробуйте завтра или оформите Plus.")
+        return
+
+    import random
+    # QUIZ_SENTENCES: (sentence, translation, option_a, option_b, correct_answer)
+    q = random.choice(QUIZ_SENTENCES)
+    sentence, translation, opt_a, opt_b, correct = q
+    
+    text = f"🧠 <b>Grammar Quiz</b>\n\n{sentence}\n<i>({translation})</i>"
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text=f"A) {opt_a}", callback_data=f"quiz_{correct}_A")
+    builder.button(text=f"B) {opt_b}", callback_data=f"quiz_{correct}_B")
+    builder.adjust(1)
+    
+    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+@router.callback_query(F.data.startswith("quiz_"))
+async def cb_quiz_answer(callback: CallbackQuery, db: Database):
+    await callback.answer()
+    # format: quiz_{correct_answer}_{chosen_answer}
+    parts = callback.data.split("_")
+    correct_answer = parts[1]
+    chosen_answer = parts[2]
+    user_id = callback.from_user.id
+    
+    if chosen_answer == correct_answer:
+        await db.incr_usage(user_id, "quiz")
+        await db.update_quiz_result(user_id, 1) 
+        await callback.message.edit_text("✅ Правильно! Отличная работа.", reply_markup=get_main_menu_keyboard())
+    else:
+        await callback.message.edit_text(f"❌ Неверно. Правильный ответ: {correct_answer}", reply_markup=get_main_menu_keyboard())
+
+# ---------------- Прогресс ----------------
+@router.message(F.text == "📊 Progress")
+async def cmd_progress(message: Message, db: Database):
+    user_id = message.from_user.id
+    stats = await db.get_stats(user_id)
+    
+    text = (
+        "📊 <b>Ваш прогресс</b>\n\n"
+        f"📚 Выучено слов: <b>{stats['learned']}</b>\n"
+        f"🃏 Всего в колоде: <b>{stats['deck_size']}</b>\n"
+        f"🏆 Лучший результат в квизе: <b>{stats['quiz_best']}</b>"
+    )
+    await message.answer(text, reply_markup=get_main_menu_keyboard(), parse_mode="HTML")
+
+# ---------------- Уровень ----------------
+@router.message(F.text == "🎯 Level")
+async def cmd_level(message: Message, db: Database):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Beginner", callback_data="level_beginner")
+    builder.button(text="Intermediate", callback_data="level_intermediate")
+    builder.button(text="Advanced", callback_data="level_advanced")
+    builder.adjust(1)
+    
+    current_level = await db.get_level(message.from_user.id)
+    await message.answer(f"Текущий уровень: <b>{current_level.capitalize()}</b>. Выберите новый:", reply_markup=builder.as_markup(), parse_mode="HTML")
+
+@router.callback_query(F.data.startswith("level_"))
+async def cb_set_level(callback: CallbackQuery, db: Database):
+    await callback.answer()
+    new_level = callback.data.split("_")[1]
+    await db.set_level(callback.from_user.id, new_level)
+    await callback.message.edit_text(f"✅ Уровень изменен на: <b>{new_level.capitalize()}</b>", reply_markup=get_main_menu_keyboard(), parse_mode="HTML")

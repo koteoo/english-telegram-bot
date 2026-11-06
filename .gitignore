@@ -1,0 +1,18 @@
+# Виртуальное окружение
+venv/
+.venv/
+
+# Кэш и модели ИИ
+models_cache/
+*.onnx
+*.bin
+
+# База данных и секреты
+*.db
+.env
+
+# Системные файлы Python
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
