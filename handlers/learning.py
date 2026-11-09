@@ -54,7 +54,7 @@ async def word_of_day(message: Message, db: Database) -> None:
     if eff_level != real_level:
         lock_note = "\n🔒 На бесплатном плане доступен только словарь Beginner. Полный словарь — 💠 Plus: /premium"
     text = _word_card(item) + ("\n\n➕ Добавлено в твою колоду для повторения!" if added else "") + lock_note
-    await message.answer(text, parse_mode="HTML", reply_markup=main_menu_kb())
+    await message.answer(text, parse_mode="HTML")
 
 
 @router.message(F.text == "🃏 Flashcards")
@@ -213,7 +213,7 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
                 reply_markup=main_menu_kb(),
             )
         else:
-            await message.answer("Это слово уже в твоей колоде 👍", reply_markup=main_menu_kb())
+            await message.answer("Это слово уже в твоей колоде 👍")
 
 
 @router.message(F.text == "📊 Progress")

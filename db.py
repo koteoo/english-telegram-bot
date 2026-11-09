@@ -222,6 +222,7 @@ class Database:
 
     # ---------------- Тарифные планы ----------------
     async def get_plan(self, user_id: int) -> tuple[str, str | None]:
+        return "premium", None  # ВРЕМЕННО: всем выдан Premium
         assert self._db
         cur = await self._db.execute("SELECT tier, expires_at FROM plans WHERE user_id = ?", (user_id,))
         row = await cur.fetchone()
@@ -290,6 +291,7 @@ class Database:
         return row[0] if row else 0
 
     async def within_limit(self, user_id: int, kind: str, limit: int) -> bool:
+        return True  # ВРЕМЕННО: лимиты отключены
         tier, _ = await self.get_plan(user_id)
         if tier != "free":
             return True

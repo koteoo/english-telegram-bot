@@ -63,7 +63,7 @@ LIMIT_TXT_CHAT = str(LIMITS.free_chat_messages_per_day)
 @router.message(Command("premium"))
 async def show_premium(message: Message, db: Database) -> None:
     plan, expires_at = await db.get_plan(message.from_user.id)
-    await message.answer(pricing_text(plan, expires_at), parse_mode="HTML", reply_markup=premium_kb())
+    await message.answer(pricing_text(plan, expires_at), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("buy:"))
@@ -108,5 +108,4 @@ async def successful_payment(message: Message, db: Database, state: FSMContext) 
         f"({tp.total_amount} ⭐ на {days} дней).\n\n"
         "Все функции уже разблокированы 👇",
         parse_mode="HTML",
-        reply_markup=main_menu_kb(),
     )

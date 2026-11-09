@@ -39,3 +39,14 @@ VOICE_REPLY_ENABLED = os.getenv("VOICE_REPLY_ENABLED", "off")  # off | on | togg
 
 from pathlib import Path
 BASE_DIR = Path(__file__).parent
+
+# === Константы для лимитов и подсказок (добавлено для совместимости) ===
+class LIMITS:
+    free_chat_messages_per_day = 15
+    plus_voice_inputs_per_day = 15
+    plus_tts_per_day = 10
+
+UPGRADE_HINTS = {
+    "voice": "🎙 Голосовые сообщения доступны только на тарифах Plus и Premium. /premium",
+    "chat": "💬 Лимит разговора исчерпан. Без лимита — 👑 Premium: /premium"
+}

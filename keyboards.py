@@ -16,6 +16,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📊 Progress"), KeyboardButton(text="🎯 Level")],
             [KeyboardButton(text="💬 Topics"), KeyboardButton(text="🗣 Chat with me")],
             [KeyboardButton(text="💎 Premium"), KeyboardButton(text="❓ Help")],
+            [KeyboardButton(text="🔄 Translate")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Choose an action…",
@@ -110,3 +111,11 @@ def back_topics_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="← Other topics", callback_data="cmd:topics")]]
     )
+
+
+def translate_menu_kb() -> ReplyKeyboardMarkup:
+    """Клавиатура для режима перевода (только кнопка выхода)."""
+    keyboard = [
+        [KeyboardButton(text="🏠 Main menu")],
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)

@@ -25,10 +25,9 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(start.router)
     dp.include_router(premium.router)    # оплата звёздами — раньше остальных callback
-    dp.include_router(learning.router)
-    dp.include_router(translate.router)  # перевод слов — ДО chat,
-                                         # чтобы одно слово в диалоге не уходило в LLM
-    dp.include_router(chat.router)
+    dp.include_router(learning.router)  # ВАЖНО: learning ПЕРЕД chat, чтобы кнопки меню работали
+    dp.include_router(chat.router)  # чат
+    dp.include_router(translate.router)  # перевод — в самом конце
 
     await bot.set_my_commands([
         BotCommand(command="/start", description="Начать"),
