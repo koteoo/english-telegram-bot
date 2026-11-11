@@ -6,6 +6,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import dictionary_api
+import dictionary
 from data.vocabulary import VOCABULARY
 from keyboards import main_menu_kb, translate_menu_kb
 
@@ -74,14 +75,20 @@ async def cmd_cancel_translate(message: Message, state: FSMContext):
 
 async def process_translation(message: Message, text: str):
     """Основная функция перевода."""
-    # 1. Пробуем внешний API
-    api_data = await dictionary_api.fetch_word_details(text)
-
-    if api_data:
-        response = api_data["translation"]
-        if api_data["example"]:
-            response += f"\n\n💬 <i>{api_data['example']}</i>"
+    # 1. Локальный поиск через обновленную функцию
+    result_tuple = dictionary.local_lookup(text, "en-ru")
+    
+    if result_tuple:
+        translation_str, source_str = result_tuple
+        
+        response = f"<b>{text}</b> → {translation_str}"
+        
+        # Добавляем подсказку о источнике, если нужно
+        if source_str == "RuEnDict":
+            response += "\n<i>(из словаря Мюллера)</i>"
+            
         response += "\n\n<i>➡️ Введите следующее слово или нажмите 🏠 Main menu</i>"
+        
         await message.answer(response, parse_mode="HTML", reply_markup=translate_menu_kb())
         return
 

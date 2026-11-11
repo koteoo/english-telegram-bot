@@ -4,12 +4,32 @@
 Цепочка: локальная база -> SQLite-кэш -> RuEnDict -> LLM (Groq/Ollama) -> офлайн-подсказка.
 """
 import asyncio
+from collections import defaultdict
 import json
 import logging
 import os
 import re
 import sqlite3
 import threading
+
+try:
+    import pymorphy3 as _morph_lib
+    _MORPH = _morph_lib.MorphAnalyzer()
+except ImportError:
+    try:
+        import pymorphy2 as _morph_lib
+        _MORPH = _morph_lib.MorphAnalyzer()
+    except ImportError:
+        _MORPH = None
+
+def _normalize_ru(word: str) -> str:
+    if not _MORPH:
+        return word.lower().strip()
+    parsed = _MORPH.parse(word.lower().strip())
+    if parsed:
+        return parsed[0].normal_form
+    return word.lower().strip()
+
 import urllib.request
 from pathlib import Path
 
@@ -27,6 +47,8 @@ RUEDICT_URLS = [
 ]
 CACHE_PATH = BASE_DIR / "db" / "translations.db"
 RUEDICT_PATH = Path(os.getenv("RUEDICT_LOCAL_PATH") or (BASE_DIR / "db" / "ruendict.json"))
+
+MUELLER_RAW_PATH = BASE_DIR / "data" / "dicts" / "mueller-base.raw"
 
 _word_re = re.compile(r"[A-Za-z][A-Za-z'’\-]{0,63}")
 _cyr_re = re.compile(r"[А-Яа-яЁё][А-Яа-яЁё'’\-\s]{0,63}")
@@ -104,6 +126,7 @@ def _parse_ruedict(raw: str) -> dict[str, str]:
 
 
 def _load_ruedict_sync() -> bool:
+    load_full_en_ru_index()
     global _ruen_ru_en, _ruen_en_ru, _ruen_loaded
     if _ruen_loaded:
         return bool(_ruen_ru_en)
@@ -144,6 +167,117 @@ def _load_ruedict_sync() -> bool:
         return False
 
 
+
+
+def load_full_en_ru_index():
+    """Читает mueller-base.raw напрямую и строит ЧИСТЫЙ индекс EN -> [List of RU]."""
+    if not MUELLER_RAW_PATH.exists():
+        log.warning("Mueller raw file not found at %s", MUELLER_RAW_PATH)
+        return
+    
+    try:
+        raw = MUELLER_RAW_PATH.read_text(encoding="utf-8", errors="replace")
+        blocks = re.split(r"^_{3,}\s*$", raw, flags=re.M)
+        
+        # Регулярки для очистки
+        phonetic_re = re.compile(r"\[[^\]]*\]")
+        paren_re = re.compile(r"\([^)]*\)")
+        marker_re = re.compile(r"(?:^|\s)_[A-Za-zА-Яа-яЁё]+\.?(?=\s|$)")
+        numbering_re = re.compile(r"^\d+[.)]\s*")
+        example_sep_re = re.compile(r":\s+") # Разделитель между переводом и примером
+        
+        temp_en_to_rus = defaultdict(list)
+        
+        for block in blocks:
+            lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+            if len(lines) < 2: continue
+            
+            head = lines[0].strip().lower()
+            # Фильтр головы: только буквы/дефисы/апострофы, длина до 64
+            if not re.match(r"^[a-z][a-z'’\-]{0,63}$", head): continue
+            
+            definition = " ".join(lines[1:])
+            
+            # 1. Удаляем фонетическую транскрипцию [...]
+            def_clean = phonetic_re.sub(" ", definition)
+            # 2. Удаляем содержимое в скобках (...)
+            def_clean = paren_re.sub(" ", def_clean)
+            # 3. Удаляем маркеры частей речи (_n., _v.t. и т.д.)
+            def_clean = marker_re.sub(" ", def_clean)
+            def_clean = marker_re.sub(" ", def_clean) # Второй проход
+            
+            # 4. Отделяем основное значение от примеров (обычно после двоеточия)
+            # В Мюллере формат: "значение1, значение2 : пример1; пример2"
+            # Мы берем ТОЛЬКО часть ДО первого двоеточия, если там есть кириллица
+            main_part, _, example_part = def_clean.partition(":")
+            
+            target_text = main_part
+            # Если в основной части нет кириллицы, пробуем взять из примеров (редкий случай)
+            if not re.search(r"[А-Яа-яЁё]", target_text):
+                target_text = example_part
+                
+            # Разбиваем на значения по запятым и точкам с запятой
+            raw_meanings = re.split(r"[;,]", target_text)
+            
+            valid_meanings = []
+            for m in raw_meanings:
+                m = m.strip()
+                if not m: continue
+                
+                # Удаляем нумерацию вида "1)", "2."
+                m = numbering_re.sub('', m).strip()
+                
+                # Схлопываем пробелы
+                m = re.sub(r'\s+', ' ', m)
+                
+                # Удаляем пунктуацию по краям
+                m = re.sub(r'^[\W_]+|[\W_]+$', '', m)
+                
+                # ФИНАЛЬНАЯ ОЧИСТКА МУСОРА:
+                # 1. Если осталось латиница — пропускаем (это пример типа "in the morning")
+                if re.search(r"[A-Za-z]", m):
+                    continue
+                    
+                # 2. Если слишком длинно (>4 слов) — пропускаем (фраза/предложение)
+                words_in_m = m.split()
+                if len(words_in_m) == 0 or len(words_in_m) > 4:
+                    continue
+                    
+                # 3. Если начинается не с русской буквы — пропускаем
+                if not m[0].isalpha() or not ('а' <= m[0] <= 'я' or m[0] == 'ё'):
+                    continue
+                
+                # 4. Убираем повторяющиеся слова в фразе (артефакты парсинга)
+                # Например: "лёгкий лёгкий" -> "лёгкий"
+                seen_words = set()
+                clean_words = []
+                for w in words_in_m:
+                    if w not in seen_words:
+                        clean_words.append(w)
+                        seen_words.add(w)
+                m = " ".join(clean_words)
+                
+                valid_meanings.append(m.lower())
+
+            if valid_meanings:
+                # Уникализируем список значений для этого английского слова
+                unique_vals = list(dict.fromkeys(valid_meanings))[:5]
+                temp_en_to_rus[head].extend(unique_vals)
+        
+        # Заменяем глобальный словарь
+        global _ruen_en_ru
+        _ruen_en_ru.clear()
+        for en, rus_list in temp_en_to_rus.items():
+            # Финальная проверка: оставляем только непустые списки
+            if rus_list:
+                _ruen_en_ru[en] = rus_list
+                
+        log.info("Full CLEAN EN->RU index loaded from Mueller: %d words", len(_ruen_en_ru))
+        
+    except Exception as e:
+        log.error("Failed to load full EN->RU index: %s", e, exc_info=True)
+
+
 async def preload() -> None:
     await asyncio.to_thread(_load_ruedict_sync)
     try:
@@ -182,20 +316,95 @@ async def _llm_translate(query: str, direction: str) -> tuple[str, str] | None:
 
 def local_lookup(word: str, direction: str) -> tuple[str, str] | None:
     _load_ruedict_sync()
-    w = word.lower().strip()
+    # Жесткая нормализация ввода: lower, strip, удаление пунктуации по краям
+    w = word.lower().strip().strip(".!,;:? ")
+    
+    if not w:
+        return None
+
     if direction == "en-ru":
+        # 1. Проверка учебной базы (высокий приоритет)
         if w in _en_ru:
-            return _en_ru[w], "из учебной базы"
-        rus = _ruen_en_ru.get(w)
-        if rus:
-            return rus[0], "RuEnDict"
+            val = _en_ru[w]
+            # Если это список, берем первые 3 уникальных
+            if isinstance(val, list):
+                unique_vals = list(dict.fromkeys([str(v).strip() for v in val]))[:3]
+                return ", ".join(unique_vals), "учебная база"
+            else:
+                return str(val).strip(), "учебная база"
+        
+        # 2. Поиск в индексе Мюллера (_ruen_en_ru)
+        rus_list = _ruen_en_ru.get(w)
+        if rus_list:
+            clean_vals = []
+            for raw_val in rus_list:
+                val_str = str(raw_val).strip().lower()
+                
+                # ФИЛЬТРЫ ОТ МУСОРА:
+                # 1. Пустое
+                if not val_str: continue
+                
+                # 2. Содержит латинские буквы (примеры типа "in the morning")
+                if re.search(r"[A-Za-z]", val_str): continue
+                
+                # 3. Содержит скобки или нумерацию ("б)", "1.", "(см.)")
+                if any(char in val_str for char in "()[]{}"): continue
+                if re.search(r"\d+[.)]", val_str): continue
+                if re.search(r"[абвгдеёжзийклмнопрстуфхцчшщъыьэюя]\)", val_str): continue # Cyrillic letter followed by )
+                
+                # 4. Слишком длинно (>4 слов - скорее всего фраза/предложение)
+                words = val_str.split()
+                if len(words) == 0 or len(words) > 4: continue
+                
+                # 5. Начинается не с буквы
+                if not val_str[0].isalpha(): continue
+                
+                # 6. Дубликаты внутри фразы (артефакты парсинга "лёгкий лёгкий")
+                seen_words = set()
+                deduped_words = []
+                is_dup = False
+                for wd in words:
+                    if wd in seen_words:
+                        is_dup = True
+                        break
+                    seen_words.add(wd)
+                    deduped_words.append(wd)
+                if is_dup and len(deduped_words) < len(words):
+                    val_str = " ".join(deduped_words)
+                
+                clean_vals.append(val_str)
+            
+            if clean_vals:
+                # Уникализируем весь список значений
+                unique_final = list(dict.fromkeys(clean_vals))[:5]
+                combined = ", ".join(unique_final)
+                return combined, "RuEnDict"
+                
     else:
+        # Направление RU -> EN
+        # 1. Прямое совпадение в старой базе
         if w in _ru_en:
-            return ", ".join(_ru_en[w][:3]), "из учебной базы"
-        en = _ruen_ru_en.get(w)
+            vals = _ru_en[w]
+            if isinstance(vals, list):
+                return ", ".join(str(v).strip() for v in vals[:3]), "учебная база"
+            else:
+                return str(vals).strip(), "учебная база"
+        
+        # 2. Нормализация русского слова (род, падеж, число)
+        normalized_w = _normalize_ru(w)
+        
+        # 3. Поиск в новом индексе RuEnDict (ключи уже нормализованы при генерации ruendict.json)
+        en = _ruen_ru_en.get(normalized_w)
         if en:
-            return en, "RuEnDict"
+            return en, "RuEnDict (norm)"
+            
+        # 4. Fallback: поиск по оригинальному слову
+        en_orig = _ruen_ru_en.get(w)
+        if en_orig:
+            return en_orig, "RuEnDict"
+            
     return None
+
 
 
 async def translate(word: str, direction: str) -> tuple[str, str, str]:
