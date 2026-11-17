@@ -76,12 +76,18 @@ async def cmd_cancel_translate(message: Message, state: FSMContext):
 async def process_translation(message: Message, text: str):
     """Основная функция перевода."""
     # 1. Локальный поиск через обновленную функцию
-    result_tuple = dictionary.local_lookup(text, "en-ru")
+    has_cyr = any(ch in "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" for ch in text.lower())
+    direction = "ru-en" if has_cyr else "en-ru"
+    if direction == "ru-en":
+        result_tuple = dictionary.ru_en_multi(text)
+    else:
+        result_tuple = dictionary.en_ru_lookup(text)
     
     if result_tuple:
         translation_str, source_str = result_tuple
         
-        response = f"<b>{text}</b> → {translation_str}"
+        translated = translation_str[:1].upper() + translation_str[1:]
+        response = f"<b>{text}</b> → {translated}"
         
         # Добавляем подсказку о источнике, если нужно
         if source_str == "RuEnDict":

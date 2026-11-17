@@ -438,3 +438,256 @@ def extract_word(text: str) -> str | None:
     if _cyr_re.fullmatch(t):
         return t
     return None
+
+
+
+# --- Обратный индекс RU -> EN (несколько вариантов) ---
+_ru_multi: dict[str, list[str]] = {}
+
+
+def _build_ru_multi() -> None:
+    """RU -> [EN, ...] из полного индекса Мюллера. Кэшируется на диск."""
+    global _ru_multi
+    if _ru_multi:
+        return
+    import pickle
+    cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ru_multi_cache.pkl")
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as fh:
+                _ru_multi = pickle.load(fh)
+            log.info("Обратный индекс RU->EN из кэша: %d ключей", len(_ru_multi))
+            return
+        except Exception:
+            _ru_multi = {}
+    if not _ruen_en_ru:
+        return
+
+    stop = {"и", "в", "во", "на", "с", "со", "по", "от", "до", "из", "к", "ко",
+            "у", "о", "об", "за", "под", "над", "при", "для", "без", "через",
+            "а", "но", "или", "не", "как", "что", "это", "то", "же", "бы"}
+    memo = {}
+
+    def norm(x):
+        got = memo.get(x)
+        if got is None:
+            got = _normalize_ru(x) or x
+            memo[x] = got
+        return got
+
+    scores = {}
+    for en, ru_list in _ruen_en_ru.items():
+        if not isinstance(ru_list, list) or " " in en:
+            continue
+        if not re.fullmatch(r"[a-z][a-z'\-]{1,24}", en):
+            continue
+        bonus = min(len(ru_list), 15)
+        if en in _en_ru:
+            bonus += 25
+        for pos, raw in enumerate(ru_list[:10]):
+            val = str(raw).strip().lower()
+            if not val or re.search(r"[a-z]", val):
+                continue
+            if any(ch in val for ch in "()[]{}"):
+                continue
+            words = val.split()
+            if not words or len(words) > 3:
+                continue
+            variants = [(norm(val), pos)]
+            if len(words) > 1:
+                for wd in words:
+                    if len(wd) > 2 and wd not in stop:
+                        variants.append((norm(wd), pos + 4))
+            for key, pos_sc in variants:
+                if not key:
+                    continue
+                sc = pos_sc - bonus
+                bucket = scores.setdefault(key, {})
+                if en not in bucket or sc < bucket[en]:
+                    bucket[en] = sc
+    _ru_multi = {
+        key: sorted(bucket, key=lambda e: (bucket[e], len(e), e))[:8]
+        for key, bucket in scores.items()
+    }
+    log.info("Обратный индекс RU->EN построен: %d ключей", len(_ru_multi))
+    try:
+        with open(cache_path, "wb") as fh:
+            pickle.dump(_ru_multi, fh, protocol=4)
+    except Exception:
+        pass
+
+
+def ru_en_multi(word: str) -> tuple[str, str] | None:
+    """RU -> EN: несколько вариантов вместо одного."""
+    _load_ruedict_sync()
+    w = word.lower().strip().strip(".!,;:? ")
+    if not w:
+        return None
+    nw = _normalize_ru(w)
+    results = []
+
+    vals = _ru_en.get(w) or _ru_en.get(nw)
+    if vals:
+        if isinstance(vals, list):
+            results.extend(str(v).strip() for v in vals)
+        else:
+            results.append(str(vals).strip())
+
+    _build_ru_multi()
+    results.extend(_ru_multi.get(nw) or _ru_multi.get(w) or [])
+
+    old = _ruen_ru_en.get(nw) or _ruen_ru_en.get(w)
+    if old:
+        results.append(str(old).strip())
+
+    uniq = [x for x in dict.fromkeys(results) if x]
+    if uniq:
+        return ", ".join(uniq[:5]), "RuEnDict"
+    return None
+
+
+# --- Английская морфология: формы слова -> начальная форма ---
+_EN_IRREGULAR = {
+    "children": "child", "men": "man", "women": "woman", "feet": "foot",
+    "teeth": "tooth", "mice": "mouse", "geese": "goose", "people": "person",
+    "oxen": "ox", "lives": "life", "knives": "knife", "wives": "wife",
+    "leaves": "leaf", "wolves": "wolf", "halves": "half", "shelves": "shelf",
+    "went": "go", "gone": "go", "was": "be", "were": "be", "been": "be",
+    "had": "have", "did": "do", "done": "do", "made": "make", "said": "say",
+    "took": "take", "taken": "take", "got": "get", "gave": "give",
+    "given": "give", "came": "come", "saw": "see", "seen": "see",
+    "knew": "know", "known": "know", "better": "good", "best": "good",
+    "worse": "bad", "worst": "bad", "further": "far", "farther": "far",
+}
+
+
+def _en_lemmas(w: str) -> list[str]:
+    """Кандидаты на начальную форму английского слова."""
+    out = []
+    irr = _EN_IRREGULAR.get(w)
+    if irr:
+        out.append(irr)
+    if len(w) > 3:
+        if w.endswith("ies"):
+            out.append(w[:-3] + "y")
+        if w.endswith("ves"):
+            out.append(w[:-3] + "f")
+            out.append(w[:-3] + "fe")
+        if w.endswith(("ches", "shes", "sses", "xes", "zes", "ses")):
+            out.append(w[:-2])
+        if w.endswith("s") and not w.endswith(("ss", "us", "is", "ous")):
+            out.append(w[:-1])
+        for suf in ("ing", "ed", "er", "est"):
+            if w.endswith(suf):
+                base = w[:-len(suf)]
+                if len(base) > 2 and base[-1] == base[-2]:
+                    out.append(base[:-1])
+                out.append(base + "e")
+                out.append(base)
+    seen = set()
+    res = []
+    for c in out:
+        if c and c != w and c not in seen and len(c) > 1:
+            seen.add(c)
+            res.append(c)
+    return res
+
+
+_EN_PLURAL_IRREG = {"children", "men", "women", "feet", "teeth", "mice",
+                    "geese", "oxen", "people", "lives", "knives", "wives",
+                    "leaves", "wolves", "halves", "shelves"}
+
+_morph = None
+
+
+def _get_morph():
+    """Ленивая инициализация морфоанализатора: pymorphy3, затем pymorphy2."""
+    global _morph
+    if _morph is None:
+        _morph = False
+        try:
+            import pymorphy3
+            _morph = pymorphy3.MorphAnalyzer()
+        except Exception as exc:
+            log.warning("pymorphy3 недоступен: %s", exc)
+            try:
+                import inspect
+                if not hasattr(inspect, "getargspec"):
+                    inspect.getargspec = inspect.getfullargspec
+                import pymorphy2
+                _morph = pymorphy2.MorphAnalyzer()
+            except Exception as exc2:
+                log.warning("pymorphy2 недоступен: %s", exc2)
+    return _morph or None
+
+
+def _ru_head_noun(phrase: str) -> str | None:
+    """'старинный город' -> 'город'; 'бороться с нищетой' -> None."""
+    m = _get_morph()
+    if not m:
+        return None
+    words = phrase.split()
+    if len(words) < 2 or len(words) > 3:
+        return None
+    last = m.parse(words[-1])[0]
+    if last.tag.POS != "NOUN" or last.tag.case not in ("nomn", "accs"):
+        return None
+    for wd in words[:-1]:
+        p = m.parse(wd)[0]
+        if p.tag.POS not in ("ADJF", "PRTF"):
+            return None
+        if p.tag.case != last.tag.case or p.tag.number != last.tag.number:
+            return None
+    return words[-1]
+
+
+def _ru_plural(word: str) -> str | None:
+    """'собака' -> 'собаки'; для не-существительных None."""
+    m = _get_morph()
+    if not m:
+        return None
+    p = m.parse(word)[0]
+    if p.tag.POS != "NOUN" or "Pltm" in p.tag or "Sgtm" in p.tag:
+        return None
+    f = p.inflect({"plur", "nomn"})
+    return f.word if f else None
+
+
+def en_ru_lookup(word: str) -> tuple[str, str] | None:
+    """EN -> RU: формы слова, головное существительное, согласование числа."""
+    w = word.lower().strip().strip(".!,;:? ")
+    if not w:
+        return None
+    hit = local_lookup(w, "en-ru")
+    plural = False
+    if not hit:
+        for cand in _en_lemmas(w):
+            hit = local_lookup(cand, "en-ru")
+            if hit:
+                plural = w in _EN_PLURAL_IRREG or (
+                    len(cand) < len(w) and w.endswith("s")
+                    and not w.endswith(("ing", "ed", "er", "est"))
+                )
+                break
+    if not hit:
+        return None
+
+    values = [v.strip() for v in hit[0].split(",") if v.strip()]
+
+    heads = [h for h in (_ru_head_noun(v) for v in values) if h]
+    if heads:
+        m = _get_morph()
+        kept = []
+        for v in values:
+            if m and " " not in v and m.parse(v)[0].tag.POS == "ADJF":
+                continue
+            kept.append(v)
+        values = heads + kept
+
+    if plural:
+        values = [(_ru_plural(v) if " " not in v else None) or v for v in values]
+
+    uniq = [x for x in dict.fromkeys(values) if x][:5]
+    if not uniq:
+        return None
+    return ", ".join(uniq), hit[1]
