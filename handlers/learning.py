@@ -2,16 +2,22 @@
 import random
 
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
 
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
+
+
+class QuizState(StatesGroup):
+    in_quiz = State()
 
 # Текущая серия верных ответов квиза (в памяти; рекорд хранится в БД)
 _quiz_streak: dict[int, int] = {}
@@ -130,46 +136,86 @@ async def review_callback(call: CallbackQuery, db: Database) -> None:
     await call.answer()
 
 
-@router.message(F.text == "✍️ Quiz")
-async def quiz_start(message: Message, db: Database) -> None:
-    # квиз доступен всем; на бесплатном плане — лимит вопросов в день
-    if not await db.within_limit(message.from_user.id, "quiz", LIMITS.free_quizzes_per_day):
-        used = await db.get_usage(message.from_user.id, "quiz")
+def _pick_question(user_id: int, level: str):
+    """Выбрать вопрос уровня без повторов и запомнить его активным."""
+    pool_all = list(QUIZ_BY_LEVEL.get(level) or QUIZ_SENTENCES)
+    if level == "beginner":
+        pool_all += list(QUIZ_SENTENCES)
+    hist = _quiz_seen.setdefault(user_id, [])
+    pool = [q for q in pool_all if q[0] not in hist]
+    if not pool:
+        hist.clear()
+        pool = pool_all
+    q = random.choice(pool)
+    _quiz_active[user_id] = q
+    hist.append(q[0])
+    if len(hist) > 5:
+        del hist[0]
+    return q
+
+
+async def _send_question(message: Message, db: Database, user_id: int) -> bool:
+    """Отправить следующий вопрос. False — дневной лимит исчерпан."""
+    if not await db.within_limit(user_id, "quiz", LIMITS.free_quizzes_per_day):
+        used = await db.get_usage(user_id, "quiz")
         await message.answer(
             f"📭 Лимит квиза на сегодня исчерпан ({used}/{LIMITS.free_quizzes_per_day} вопросов).\n\n"
             + UPGRADE_HINTS["quiz"].format(limit=LIMITS.free_quizzes_per_day),
             reply_markup=main_menu_kb(),
         )
-        return
-    level = await db.get_level(message.from_user.id)
-    pool_all = list(QUIZ_BY_LEVEL.get(level) or QUIZ_SENTENCES)
-    if level == "beginner":
-        pool_all += list(QUIZ_SENTENCES)
-    hist = _quiz_seen.setdefault(message.from_user.id, [])
-    pool = [q for q in pool_all if q[0] not in hist]
-    if not pool:
-        hist.clear()
-        pool = pool_all
-    question = random.choice(pool)
-    _quiz_active[message.from_user.id] = question
-    hist.append(question[0])
-    if len(hist) > 5:
-        del hist[0]
-    sentence, translation, a, b, _answer = question
+        return False
+    level = await db.get_level(user_id)
+    sentence, translation, a, b, _answer = _pick_question(user_id, level)
     body = f"<b>{sentence}</b>"
     if translation:
         body += f"\n<i>({translation})</i>"
     await message.answer(
-        f"✍️ <b>Quiz time!</b> Выбери правильный вариант:\n\n"
+        f"✍️ <b>Quiz</b> — выбери правильный вариант:\n\n"
         f"{body}\n\n"
         f"A) {a}\nB) {b}",
         parse_mode="HTML",
         reply_markup=answer_quiz_cb(level),
     )
+    return True
+
+
+@router.message(F.text == "✍️ Quiz")
+async def quiz_start(message: Message, db: Database, state: FSMContext) -> None:
+    await state.set_state(QuizState.in_quiz)
+    await message.answer(
+        "✍️ <b>Режим квиза</b>\n\n"
+        "После каждого ответа придёт следующий вопрос.\n"
+        "Выход — 🏠 Main menu или /cancel",
+        parse_mode="HTML",
+        reply_markup=quiz_menu_kb(),
+    )
+    if not await _send_question(message, db, message.from_user.id):
+        await state.clear()
+
+
+@router.message(Command("cancel"), QuizState.in_quiz)
+async def quiz_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("✅ Режим квиза завершён.", reply_markup=main_menu_kb())
+
+
+@router.message(QuizState.in_quiz)
+async def quiz_text_hint(message: Message, state: FSMContext) -> None:
+    text = message.text or ""
+    if "Main menu" in text or "Отмена" in text:
+        await state.clear()
+        await message.answer("✅ Режим квиза завершён.", reply_markup=main_menu_kb())
+        return
+    await message.answer(
+        "Нажмите кнопку <b>A</b> или <b>B</b> под вопросом.\n"
+        "Выход — 🏠 Main menu или /cancel",
+        parse_mode="HTML",
+        reply_markup=quiz_menu_kb(),
+    )
 
 
 @router.callback_query(F.data.startswith("quiz:"))
-async def quiz_answer(call: CallbackQuery, db: Database) -> None:
+async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> None:
     _, level, choice = call.data.split(":")
     await db.incr_usage(call.from_user.id, "quiz")
     text = call.message.text or ""
@@ -197,11 +243,13 @@ async def quiz_answer(call: CallbackQuery, db: Database) -> None:
         lost = _quiz_streak.pop(call.from_user.id, 0)
         await call.message.edit_text(
             f"😅 Неверно. Правильный ответ: <b>{right_word}</b>.\n"
-            + (f"Серия из {lost} прервана.\n" if lost else "")
-            + "Нажми «✍️ Quiz», чтобы попробовать ещё раз.",
+            + (f"Серия из {lost} прервана.\n" if lost else ""),
             parse_mode="HTML",
         )
     await call.answer()
+    if await state.get_state() == QuizState.in_quiz.state:
+        if not await _send_question(call.message, db, call.from_user.id):
+            await state.clear()
 
 
 @router.message(F.text == "➕ Add word")

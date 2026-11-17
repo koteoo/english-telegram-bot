@@ -107,9 +107,13 @@ ADVANCED = [
 
 
 def _build(items):
+    # Детерминированный порядок по хешу, затем чередование A/B:
+    # ключи сбалансированы поровну и стабильны между перезапусками.
+    order = sorted(items, key=lambda it: hashlib.md5(it[0].encode("utf-8")).hexdigest())
+    key_of = {it[0]: ("A" if i % 2 == 0 else "B") for i, it in enumerate(order)}
     out = []
     for s, ru, ok, bad in items:
-        if int(hashlib.md5(s.encode("utf-8")).hexdigest(), 16) % 2 == 0:
+        if key_of[s] == "A":
             out.append((s, ru, ok, bad, "A"))
         else:
             out.append((s, ru, bad, ok, "B"))

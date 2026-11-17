@@ -119,3 +119,14 @@ def translate_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="🏠 Main menu")],
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+
+
+def quiz_menu_kb() -> ReplyKeyboardMarkup:
+    """Клавиатура для режима квиза (только кнопка выхода)."""
+    keyboard = [
+        [KeyboardButton(text="🏠 Main menu")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard, resize_keyboard=True,
+        input_field_placeholder="Нажмите A или B…",
+    )
