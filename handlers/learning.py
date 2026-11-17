@@ -18,6 +18,32 @@ _quiz_streak: dict[int, int] = {}
 # Последние показанные вопросы, чтобы не повторяться подряд
 _quiz_seen: dict[int, list[str]] = {}
 
+# Активный вопрос пользователя: (вопрос, перевод, A, B, ключ)
+_quiz_active: dict[int, tuple] = {}
+
+
+def _gen_question(level: str):
+    """Вопрос на перевод из базы уровня. Ключ верен по построению."""
+    words = VOCABULARY.get(level) or VOCABULARY["beginner"]
+    if len(words) < 2:
+        return None
+    w, t, _e = random.choice(words)
+    tv = {x.strip().lower() for x in t.split(",") if x.strip()}
+    pool = [x for x in words
+            if x[0] != w
+            and not ({y.strip().lower() for y in x[1].split(",")} & tv)]
+    if not pool:
+        return None
+    d = random.choice(pool)
+    if random.random() < 0.5:
+        q, a, b = f"Как переводится «{w}»?", t, d[1]
+    else:
+        q, a, b = f"Как будет «{t.split(',')[0].strip()}» по-английски?", w, d[0]
+    key = random.choice("AB")
+    if key == "B":
+        a, b = b, a
+    return (q, "", a, b, key)
+
 
 async def _effective_level(db: Database, user_id: int) -> tuple[str, str]:
     """Уровень для выдачи слов: на бесплатном плане словарь ограничен Beginner."""
@@ -136,18 +162,25 @@ async def quiz_start(message: Message, db: Database) -> None:
         return
     level = await db.get_level(message.from_user.id)
     hist = _quiz_seen.setdefault(message.from_user.id, [])
-    pool = [q for q in QUIZ_SENTENCES if q[0] not in hist]
-    if not pool:
-        hist.clear()
-        pool = list(QUIZ_SENTENCES)
-    question = random.choice(pool)
+    question = None
+    for _ in range(12):
+        cand = random.choice(QUIZ_SENTENCES) if random.random() < 0.3 else _gen_question(level)
+        if cand and cand[0] not in hist:
+            question = cand
+            break
+    if question is None:
+        question = _gen_question(level) or random.choice(QUIZ_SENTENCES)
+    _quiz_active[message.from_user.id] = question
     hist.append(question[0])
     if len(hist) > 5:
         del hist[0]
     sentence, translation, a, b, _answer = question
+    body = f"<b>{sentence}</b>"
+    if translation:
+        body += f"\n<i>({translation})</i>"
     await message.answer(
         f"✍️ <b>Quiz time!</b> Выбери правильный вариант:\n\n"
-        f"<b>{sentence}</b>\n<i>({translation})</i>\n\n"
+        f"{body}\n\n"
         f"A) {a}\nB) {b}",
         parse_mode="HTML",
         reply_markup=answer_quiz_cb(level),
@@ -159,7 +192,11 @@ async def quiz_answer(call: CallbackQuery, db: Database) -> None:
     _, level, choice = call.data.split(":")
     await db.incr_usage(call.from_user.id, "quiz")
     text = call.message.text or ""
-    q = next((cand for cand in QUIZ_SENTENCES if cand[0] in text), None)
+    q = _quiz_active.get(call.from_user.id)
+    if q and q[0] not in text:
+        q = None
+    if not q:
+        q = next((cand for cand in QUIZ_SENTENCES if cand[0] in text), None)
     if not q:
         await call.answer("Вопрос не найден 😅", show_alert=True)
         return
