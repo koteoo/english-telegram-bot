@@ -607,6 +607,13 @@ _EN_ADV_IRREGULAR = {"good": "well", "fast": "fast", "hard": "hard",
                      "long": "long", "short": "short"}
 
 
+_EN_LY_ADJ = {"chilly", "silly", "ugly", "friendly", "lonely", "likely",
+              "lovely", "holy", "jolly", "homely", "costly", "lively",
+              "manly", "orderly", "stately", "surly", "timely", "worldly",
+              "ghastly", "grisly", "sprightly", "stilly", "lowly", "goodly",
+              "scholarly", "cowardly", "earthly", "heavenly", "kingly"}
+
+
 def _en_adverb(adj: str) -> str | None:
     """'quick' -> 'quickly', 'chilly' -> 'chillily', 'gentle' -> 'gently'."""
     w = adj.lower().strip()
@@ -614,7 +621,7 @@ def _en_adverb(adj: str) -> str | None:
         return None
     if w in _EN_ADV_IRREGULAR:
         return _EN_ADV_IRREGULAR[w]
-    if w.endswith("ly"):
+    if w.endswith("ly") and w not in _EN_LY_ADJ:
         return w
     if len(w) < 3:
         return None
@@ -639,8 +646,14 @@ def _ru_adv_to_adj(word: str) -> str | None:
     base = word[:-1]
     for suf in ("ый", "ий", "ой"):
         for q in m.parse(base + suf):
-            if q.tag.POS == "ADJF" and q.tag.case in ("nomn", "accs"):
-                return q.normal_form
+            if q.tag.POS != "ADJF" or not q.is_known:
+                continue
+            if q.tag.case not in ("nomn", "accs"):
+                continue
+            nf = q.normal_form
+            if nf in _ru_multi or _normalize_ru(nf) in _ru_multi:
+                return nf
+            break
     return None
 
 
