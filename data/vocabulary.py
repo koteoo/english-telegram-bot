@@ -73,14 +73,14 @@ VOCABULARY = {
 # Мини-тест: (предложение с пропуском, перевод, вариант A, вариант B, правильный ответ "A"/"B")
 QUIZ_SENTENCES = [
     ("I ___ breakfast at 8 o'clock.", "Я завтракаю в 8 часов.", "eat", "sleeps", "A"),
-    ("She ___ to the gym every day.", "Она ходит в зал каждый день.", "goes", "go", "A"),
-    ("They ___ watching TV now.", "Они смотрят телевизор сейчас.", "are", "is", "A"),
-    ("He ___ a letter yesterday.", "Он написал письмо вчера.", "wrote", "writes", "B"),
-    ("We ___ English very well.", "Мы знаем английский очень хорошо.", "know", "knows", "A"),
+    ("She ___ to the gym every day.", "Она ходит в зал каждый день.", "go", "goes", "B"),
+    ("They ___ watching TV now.", "Они смотрят телевизор сейчас.", "is", "are", "B"),
+    ("He ___ a letter yesterday.", "Он написал письмо вчера.", "wrote", "writes", "A"),
+    ("We ___ English very well.", "Мы знаем английский очень хорошо.", "knows", "know", "B"),
     ("This book is ___ than that one.", "Эта книга интереснее той.", "more interesting", "interestinger", "A"),
-    ("If I ___ rich, I would travel the world.", "Будь я богат, я бы путешествовал по миру.", "were", "am", "A"),
+    ("If I ___ rich, I would travel the world.", "Будь я богат, я бы путешествовал по миру.", "am", "were", "B"),
     ("You ___ wear a seatbelt in the car.", "Вы должны пристёгиваться в машине.", "must", "can't", "A"),
-    ("She has lived here ___ 2010.", "Она живёт здесь с 2010 года.", "since", "for", "A"),
+    ("She has lived here ___ 2010.", "Она живёт здесь с 2010 года.", "for", "since", "B"),
     ("I look forward to ___ from you.", "Жду от тебя письма.", "hearing", "hear", "A"),
 ]
 
