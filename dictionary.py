@@ -205,6 +205,8 @@ def load_full_en_ru_index():
             # 3. Удаляем маркеры частей речи (_n., _v.t. и т.д.)
             def_clean = marker_re.sub(" ", def_clean)
             def_clean = marker_re.sub(" ", def_clean) # Второй проход
+            # Отрезаем секцию идиом/примеров (начинается с "*)")
+            def_clean = def_clean.split("*)")[0]
             
             # 4. Отделяем основное значение от примеров (обычно после двоеточия)
             # В Мюллере формат: "значение1, значение2 : пример1; пример2"
@@ -217,7 +219,7 @@ def load_full_en_ru_index():
                 target_text = example_part
                 
             # Разбиваем на значения по запятым и точкам с запятой
-            raw_meanings = re.split(r"[;,]", target_text)
+            raw_meanings = re.split(r"\d+[.)]\s*|[;,]", target_text)
             
             valid_meanings = []
             for m in raw_meanings:
@@ -642,15 +644,34 @@ def _ru_head_noun(phrase: str) -> str | None:
 
 
 def _ru_plural(word: str) -> str | None:
-    """'собака' -> 'собаки'; для не-существительных None."""
+    """'собака' -> 'собаки', 'злой человек' -> 'злые люди'.
+
+    Обороты согласуем целиком; несчитаемые и глагольные значения не трогаем.
+    """
     m = _get_morph()
     if not m:
         return None
-    p = m.parse(word)[0]
-    if p.tag.POS != "NOUN" or "Pltm" in p.tag or "Sgtm" in p.tag:
+    words = word.split()
+    if not words or len(words) > 3:
         return None
-    f = p.inflect({"plur", "nomn"})
-    return f.word if f else None
+    parses = [m.parse(w)[0] for w in words]
+    if not any(p.tag.POS == "NOUN" for p in parses):
+        if len(words) == 1 and parses[0].tag.POS in ("ADJF", "PRTF"):
+            f = parses[0].inflect({"plur", "nomn"})
+            return f.word if f else None
+        return None
+    for p in parses:
+        if p.tag.POS not in ("NOUN", "ADJF", "PRTF"):
+            return None
+        if "Sgtm" in p.tag or "Pltm" in p.tag:
+            return None
+    out = []
+    for p in parses:
+        f = p.inflect({"plur", "nomn"})
+        if not f:
+            return None
+        out.append(f.word)
+    return " ".join(out)
 
 
 def en_ru_lookup(word: str) -> tuple[str, str] | None:
@@ -674,18 +695,25 @@ def en_ru_lookup(word: str) -> tuple[str, str] | None:
 
     values = [v.strip() for v in hit[0].split(",") if v.strip()]
 
-    heads = [h for h in (_ru_head_noun(v) for v in values) if h]
-    if heads:
-        m = _get_morph()
-        kept = []
+    m = _get_morph()
+    has_single_noun = False
+    if m:
         for v in values:
-            if m and " " not in v and m.parse(v)[0].tag.POS == "ADJF":
-                continue
-            kept.append(v)
-        values = heads + kept
+            if " " not in v and m.parse(v)[0].tag.POS == "NOUN":
+                has_single_noun = True
+                break
+    if m and not has_single_noun:
+        heads = [h for h in (_ru_head_noun(v) for v in values) if h]
+        if heads:
+            kept = []
+            for v in values:
+                if " " not in v and m.parse(v)[0].tag.POS == "ADJF":
+                    continue
+                kept.append(v)
+            values = heads + kept
 
     if plural:
-        values = [(_ru_plural(v) if " " not in v else None) or v for v in values]
+        values = [_ru_plural(v) or v for v in values]
 
     uniq = [x for x in dict.fromkeys(values) if x][:5]
     if not uniq:
