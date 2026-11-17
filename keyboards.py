@@ -130,3 +130,14 @@ def quiz_menu_kb() -> ReplyKeyboardMarkup:
         keyboard=keyboard, resize_keyboard=True,
         input_field_placeholder="Нажмите A или B…",
     )
+
+
+def flashcards_menu_kb() -> ReplyKeyboardMarkup:
+    """Клавиатура для режима карточек (только кнопка выхода)."""
+    keyboard = [
+        [KeyboardButton(text="🏠 Main menu")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard, resize_keyboard=True,
+        input_field_placeholder="Вспомните перевод и нажмите кнопку…",
+    )

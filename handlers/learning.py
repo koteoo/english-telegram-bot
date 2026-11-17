@@ -10,7 +10,7 @@ from aiogram.types import Message, CallbackQuery
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -18,6 +18,10 @@ router = Router()
 
 class QuizState(StatesGroup):
     in_quiz = State()
+
+
+class FlashcardsState(StatesGroup):
+    in_review = State()
 
 # Текущая серия верных ответов квиза (в памяти; рекорд хранится в БД)
 _quiz_streak: dict[int, int] = {}
@@ -30,6 +34,10 @@ _quiz_active: dict[int, tuple] = {}
 
 # Все вопросы: нужны для разбора ответа после перезапуска бота
 _ALL_QUIZ = list(QUIZ_SENTENCES) + [q for qs in QUIZ_BY_LEVEL.values() for q in qs]
+
+# Показанная карточка: (слово, перевод, пример) и последнее слово для антиповтора
+_card_active: dict[int, tuple] = {}
+_card_last: dict[int, str] = {}
 
 
 async def _effective_level(db: Database, user_id: int) -> tuple[str, str]:
@@ -79,22 +87,63 @@ async def word_of_day(message: Message, db: Database) -> None:
     await message.answer(text, parse_mode="HTML")
 
 
-@router.message(F.text == "🃏 Flashcards")
-async def flashcards(message: Message, db: Database) -> None:
-    level = await db.get_level(message.from_user.id)
-    due = await db.due_cards(message.from_user.id, level, limit=10)
+async def _send_card(message: Message, db: Database, user_id: int) -> bool:
+    """Показать следующую карточку. False — повторять нечего."""
+    level = await db.get_level(user_id)
+    due = await db.due_cards(user_id, level, limit=10)
     if not due:
         await message.answer(
             "🎉 Повторять пока нечего! Выучи новое слово через «📚 Word of the Day» "
             "или добавь своё через «➕ Add word».",
             reply_markup=main_menu_kb(),
         )
-        return
-    item = random.choice(due)
+        return False
+    last = _card_last.get(user_id)
+    pool = [c for c in due if c.word != last] or due
+    item = random.choice(pool)
+    _card_last[user_id] = item.word
+    _card_active[user_id] = (item.word, item.translation, item.example)
     await message.answer(
         _word_card(item, hint_only=True),
         parse_mode="HTML",
         reply_markup=level_select_cb(level),
+    )
+    return True
+
+
+@router.message(F.text == "🃏 Flashcards")
+async def flashcards(message: Message, db: Database, state: FSMContext) -> None:
+    await state.set_state(FlashcardsState.in_review)
+    await message.answer(
+        "🃏 <b>Режим карточек</b>\n\n"
+        "Вспомни перевод, затем нажми «✅ I know it» или «❌ Don't know».\n"
+        "После ответа придёт следующая карточка.\n"
+        "Выход — 🏠 Main menu или /cancel",
+        parse_mode="HTML",
+        reply_markup=flashcards_menu_kb(),
+    )
+    if not await _send_card(message, db, message.from_user.id):
+        await state.clear()
+
+
+@router.message(Command("cancel"), FlashcardsState.in_review)
+async def cards_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("✅ Режим карточек завершён.", reply_markup=main_menu_kb())
+
+
+@router.message(FlashcardsState.in_review)
+async def cards_text_hint(message: Message, state: FSMContext) -> None:
+    text = message.text or ""
+    if "Main menu" in text or "Отмена" in text:
+        await state.clear()
+        await message.answer("✅ Режим карточек завершён.", reply_markup=main_menu_kb())
+        return
+    await message.answer(
+        "Нажмите «✅ I know it» или «❌ Don't know» под карточкой.\n"
+        "Выход — 🏠 Main menu или /cancel",
+        parse_mode="HTML",
+        reply_markup=flashcards_menu_kb(),
     )
 
 
@@ -108,7 +157,7 @@ def _find_word_info(word: str):
 
 
 @router.callback_query(F.data.startswith("rev:"))
-async def review_callback(call: CallbackQuery, db: Database) -> None:
+async def review_callback(call: CallbackQuery, db: Database, state: FSMContext) -> None:
     _, level, correct_flag = call.data.split(":")
     correct = correct_flag == "1"
     text = call.message.text or ""
@@ -121,7 +170,11 @@ async def review_callback(call: CallbackQuery, db: Database) -> None:
         await call.answer("Не нашёл карточку 😅", show_alert=True)
         return
     new_box = await db.review_card(call.from_user.id, word, correct)
-    translation, example = _find_word_info(word)
+    active = _card_active.get(call.from_user.id)
+    if active and active[0] == word:
+        translation, example = active[1], active[2]
+    else:
+        translation, example = _find_word_info(word)
     extra = f"\n💡 <i>{translation}</i>\n📝 <b>{example}</b>" if translation else ""
     if correct:
         await call.message.edit_text(
@@ -134,6 +187,9 @@ async def review_callback(call: CallbackQuery, db: Database) -> None:
             parse_mode="HTML",
         )
     await call.answer()
+    if await state.get_state() == FlashcardsState.in_review.state:
+        if not await _send_card(call.message, db, call.from_user.id):
+            await state.clear()
 
 
 def _pick_question(user_id: int, level: str):
