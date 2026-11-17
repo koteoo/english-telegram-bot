@@ -15,6 +15,9 @@ router = Router()
 # Текущая серия верных ответов квиза (в памяти; рекорд хранится в БД)
 _quiz_streak: dict[int, int] = {}
 
+# Последние показанные вопросы, чтобы не повторяться подряд
+_quiz_seen: dict[int, list[str]] = {}
+
 
 async def _effective_level(db: Database, user_id: int) -> tuple[str, str]:
     """Уровень для выдачи слов: на бесплатном плане словарь ограничен Beginner."""
@@ -132,7 +135,15 @@ async def quiz_start(message: Message, db: Database) -> None:
         )
         return
     level = await db.get_level(message.from_user.id)
-    question = random.choice(QUIZ_SENTENCES)
+    hist = _quiz_seen.setdefault(message.from_user.id, [])
+    pool = [q for q in QUIZ_SENTENCES if q[0] not in hist]
+    if not pool:
+        hist.clear()
+        pool = list(QUIZ_SENTENCES)
+    question = random.choice(pool)
+    hist.append(question[0])
+    if len(hist) > 5:
+        del hist[0]
     sentence, translation, a, b, _answer = question
     await message.answer(
         f"✍️ <b>Quiz time!</b> Выбери правильный вариант:\n\n"
