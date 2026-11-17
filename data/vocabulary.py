@@ -72,11 +72,11 @@ VOCABULARY = {
 
 # Мини-тест: (предложение с пропуском, перевод, вариант A, вариант B, правильный ответ "A"/"B")
 QUIZ_SENTENCES = [
-    ("I ___ breakfast at 8 o'clock.", "Я завтракаю в 8 часов.", "eat", "sleeps", "A"),
+    ("I ___ breakfast at 8 o'clock.", "Я завтракаю в 8 часов.", "eat", "eats", "A"),
     ("She ___ to the gym every day.", "Она ходит в зал каждый день.", "go", "goes", "B"),
     ("They ___ watching TV now.", "Они смотрят телевизор сейчас.", "is", "are", "B"),
     ("He ___ a letter yesterday.", "Он написал письмо вчера.", "wrote", "writes", "A"),
-    ("We ___ English very well.", "Мы знаем английский очень хорошо.", "knows", "know", "B"),
+    ("We ___ English very well.", "Мы говорим по-английски очень хорошо.", "speaks", "speak", "B"),
     ("This book is ___ than that one.", "Эта книга интереснее той.", "more interesting", "interestinger", "A"),
     ("If I ___ rich, I would travel the world.", "Будь я богат, я бы путешествовал по миру.", "am", "were", "B"),
     ("You ___ wear a seatbelt in the car.", "Вы должны пристёгиваться в машине.", "must", "can't", "A"),
