@@ -614,6 +614,16 @@ _EN_LY_ADJ = {"chilly", "silly", "ugly", "friendly", "lonely", "likely",
               "scholarly", "cowardly", "earthly", "heavenly", "kingly"}
 
 
+_EN_FLAT_ADV = {"far", "nigh", "mum", "well", "ill", "much", "little",
+                "enough", "aloud", "abroad", "ahead", "apart", "aside",
+                "away", "home", "down", "here", "there", "now", "then",
+                "today", "tonight", "yesterday", "tomorrow", "ago",
+                "alive", "alone", "asleep", "awake", "alike"}
+
+_EN_NOUN_SUF = ("ity", "ness", "tion", "sion", "ment", "ance", "ence",
+                "ship", "hood", "dom", "ism", "ist")
+
+
 def _en_adverb(adj: str) -> str | None:
     """'quick' -> 'quickly', 'chilly' -> 'chillily', 'gentle' -> 'gently'."""
     w = adj.lower().strip()
@@ -621,6 +631,10 @@ def _en_adverb(adj: str) -> str | None:
         return None
     if w in _EN_ADV_IRREGULAR:
         return _EN_ADV_IRREGULAR[w]
+    if w in _EN_FLAT_ADV:
+        return w
+    if w.endswith(_EN_NOUN_SUF):
+        return None
     if w.endswith("ly") and w not in _EN_LY_ADJ:
         return w
     if len(w) < 3:
