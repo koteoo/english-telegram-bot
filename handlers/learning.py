@@ -339,7 +339,7 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
                 break
     if found:
         w, t, e = found
-        added = await db.add_word_to_deck(message.from_user.id, w)
+        added = await db.add_word_to_deck(message.from_user.id, w, t, e)
         await db.incr_usage(message.from_user.id, "words")
         await message.answer(
             f"✅ Слово <b>{w}</b> уже в моей базе!\n💡 <i>{t}</i>\n📝 <b>{e}</b>"
@@ -348,11 +348,23 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
             reply_markup=main_menu_kb(),
         )
     else:
-        added = await db.add_word_to_deck(message.from_user.id, word)
+        import dictionary
+        hit = dictionary.en_ru_lookup(word)
+        if not hit:
+            await message.answer(
+                f"❌ Не нашёл перевод для «{word}» — проверьте написание.\n"
+                "В колоду не добавляю: слово без перевода учить нечем.",
+                reply_markup=main_menu_kb(),
+            )
+            return
+        translation = hit[0]
+        added = await db.add_word_to_deck(message.from_user.id, word, translation, "")
         await db.incr_usage(message.from_user.id, "words")
         if added:
             await message.answer(
-                f"✅ Добавил «{word}» в твою колоду! Завтра попрошу повторить 😉",
+                f"✅ Добавил «{word}» в твою колоду!\n💡 <i>{translation}</i>\n"
+                "Завтра попрошу повторить 😉",
+                parse_mode="HTML",
                 reply_markup=main_menu_kb(),
             )
         else:

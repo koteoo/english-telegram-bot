@@ -136,13 +136,23 @@ class Database:
         rows = await cur.fetchall()
         result = []
         
-        # Локальный словарь как fallback
-        local_index = {w: (t, e) for w, t, e in VOCABULARY.get(level, [])}
-        
+        # Fallback по ВСЕМ уровням: слово не зависит от текущего уровня
+        local_index = {w.lower(): (t, e) for ws in VOCABULARY.values() for w, t, e in ws}
+
         for word, translation, example, box in rows:
-            final_translation = translation or local_index.get(word, ("", ""))[0]
-            final_example = example or local_index.get(word, ("", ""))[1]
-            
+            fb_t, fb_e = local_index.get(word.lower(), ("", ""))
+            final_translation = translation or fb_t
+            final_example = example or fb_e
+
+            if not final_translation:
+                # последний шанс — словарь Мюллера; при сбое остаётся заглушка
+                try:
+                    import dictionary
+                    hit = dictionary.en_ru_lookup(word)
+                    if hit:
+                        final_translation = hit[0]
+                except Exception:
+                    pass
             if not final_translation:
                 final_translation = "Translation not found"
             if not final_example:
