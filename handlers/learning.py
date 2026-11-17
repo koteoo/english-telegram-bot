@@ -93,8 +93,7 @@ async def _send_card(message: Message, db: Database, user_id: int) -> bool:
     due = await db.due_cards(user_id, level, limit=10)
     if not due:
         await message.answer(
-            "🎉 Повторять пока нечего! Выучи новое слово через «📚 Word of the Day» "
-            "или добавь своё через «➕ Add word».",
+            "🎉 Повторять пока нечего.",
             reply_markup=main_menu_kb(),
         )
         return False
@@ -113,6 +112,16 @@ async def _send_card(message: Message, db: Database, user_id: int) -> bool:
 
 @router.message(F.text == "🃏 Flashcards")
 async def flashcards(message: Message, db: Database, state: FSMContext) -> None:
+    uid = message.from_user.id
+    level = await db.get_level(uid)
+    if not await db.due_cards(uid, level, limit=1):
+        await state.clear()
+        await message.answer(
+            "🃏 <b>Режим карточек</b>\n\n🎉 Повторять пока нечего.",
+            parse_mode="HTML",
+            reply_markup=main_menu_kb(),
+        )
+        return
     await state.set_state(FlashcardsState.in_review)
     await message.answer(
         "🃏 <b>Режим карточек</b>\n\n"
