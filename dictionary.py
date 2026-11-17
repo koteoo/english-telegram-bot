@@ -536,6 +536,8 @@ _EN_NO_PLURAL = {"news", "series", "species", "information", "advice",
 
 _EN_ES_O = {"potato", "tomato", "hero", "echo", "veto", "torpedo", "embargo"}
 
+_EN_NEEDS_ES = {"lens", "gas", "atlas", "bias", "canvas", "alias"}
+
 
 def _ru_is_plural(word: str) -> bool:
     """True, если слово - именительный множественного: собаки, окна, очки."""
@@ -560,6 +562,14 @@ def _en_plural(word: str) -> str:
         return word
     low = parts[-1].lower()
     if low in _EN_NO_PLURAL:
+        return word
+    # уже множественное: spectacles, specs
+    if low.endswith("s") and not low.endswith(("ss", "us", "is")) and low not in _EN_NEEDS_ES:
+        return word
+    # прилагательные/причастия: spectacled, goggled, building
+    if low.endswith("ed") and len(low) >= 6:
+        return word
+    if low.endswith("ing") and len(low) >= 8:
         return word
     if low in _EN_PLURAL_IRREGULAR:
         new = _EN_PLURAL_IRREGULAR[low]
