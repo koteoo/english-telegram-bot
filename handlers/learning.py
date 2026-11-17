@@ -63,7 +63,7 @@ async def word_of_day(message: Message, db: Database) -> None:
 @router.message(F.text == "🃏 Flashcards")
 async def flashcards(message: Message, db: Database) -> None:
     level = await db.get_level(message.from_user.id)
-    due = await db.due_cards(message.from_user.id, level, limit=1)
+    due = await db.due_cards(message.from_user.id, level, limit=10)
     if not due:
         await message.answer(
             "🎉 Повторять пока нечего! Выучи новое слово через «📚 Word of the Day» "
@@ -71,7 +71,7 @@ async def flashcards(message: Message, db: Database) -> None:
             reply_markup=main_menu_kb(),
         )
         return
-    item = due[0]
+    item = random.choice(due)
     await message.answer(
         _word_card(item, hint_only=True),
         parse_mode="HTML",

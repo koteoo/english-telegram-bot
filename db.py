@@ -173,7 +173,11 @@ class Database:
             new_box = 0
             
         days = REPETITION_INTERVALS_DAYS[new_box]
-        next_review = _now() + dt.timedelta(days=days)
+        if days <= 0:
+            # «не знаю» — повтор через 10 минут, иначе карточка зацикливается
+            next_review = _now() + dt.timedelta(minutes=10)
+        else:
+            next_review = _now() + dt.timedelta(days=days)
         
         await self._db.execute(
             "UPDATE cards SET box = ?, next_review = ? WHERE user_id = ? AND word = ?",
