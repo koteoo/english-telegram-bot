@@ -519,6 +519,62 @@ def _build_ru_multi() -> None:
         pass
 
 
+_EN_PLURAL_IRREGULAR = {
+    "man": "men", "woman": "women", "child": "children", "foot": "feet",
+    "tooth": "teeth", "mouse": "mice", "goose": "geese", "person": "people",
+    "ox": "oxen", "life": "lives", "knife": "knives", "wife": "wives",
+    "leaf": "leaves", "wolf": "wolves", "half": "halves", "shelf": "shelves",
+    "calf": "calves", "thief": "thieves", "loaf": "loaves", "self": "selves",
+    "datum": "data", "criterion": "criteria", "phenomenon": "phenomena",
+    "analysis": "analyses", "basis": "bases", "crisis": "crises",
+    "thesis": "theses", "axis": "axes", "matrix": "matrices",
+}
+
+_EN_NO_PLURAL = {"news", "series", "species", "information", "advice",
+                 "money", "music", "furniture", "equipment", "knowledge",
+                 "progress", "traffic", "weather", "fun", "luck"}
+
+_EN_ES_O = {"potato", "tomato", "hero", "echo", "veto", "torpedo", "embargo"}
+
+
+def _ru_is_plural(word: str) -> bool:
+    """True, если слово - именительный множественного: собаки, окна, очки."""
+    m = _get_morph()
+    if not m:
+        return False
+    for p in m.parse(word):
+        if p.tag.POS != "NOUN" or "Sgtm" in p.tag:
+            continue
+        f = p.inflect({"plur", "nomn"})
+        if f and f.word == word:
+            return True
+    return False
+
+
+def _en_plural(word: str) -> str:
+    """'dog' -> 'dogs', 'city' -> 'cities', 'wolf' -> 'wolves'."""
+    if not word:
+        return word
+    parts = word.split()
+    if len(parts) > 3:
+        return word
+    low = parts[-1].lower()
+    if low in _EN_NO_PLURAL:
+        return word
+    if low in _EN_PLURAL_IRREGULAR:
+        new = _EN_PLURAL_IRREGULAR[low]
+    elif len(low) > 2 and low.endswith("y") and low[-2] not in "aeiou":
+        new = low[:-1] + "ies"
+    elif low.endswith(("s", "x", "z", "ch", "sh")):
+        new = low + "es"
+    elif low in _EN_ES_O:
+        new = low + "es"
+    else:
+        new = low + "s"
+    parts[-1] = new
+    return " ".join(parts)
+
+
 def ru_en_multi(word: str) -> tuple[str, str] | None:
     """RU -> EN: несколько вариантов вместо одного."""
     _load_ruedict_sync()
@@ -543,9 +599,11 @@ def ru_en_multi(word: str) -> tuple[str, str] | None:
         results.append(str(old).strip())
 
     uniq = [x for x in dict.fromkeys(results) if x]
-    if uniq:
-        return ", ".join(uniq[:5]), "RuEnDict"
-    return None
+    if not uniq:
+        return None
+    if _ru_is_plural(w):
+        uniq = [_en_plural(v) for v in uniq]
+    return ", ".join(uniq[:5]), "RuEnDict"
 
 
 # --- Английская морфология: формы слова -> начальная форма ---
