@@ -1,7 +1,9 @@
 """Интерактивный чат на английском: выбор темы + офлайн-движок."""
+import asyncio
+import io
 import logging
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -11,7 +13,7 @@ from db import Database
 from data.topics import TOPICS, TOPIC_BY_ID, topic_idea
 from chat_engine import local_engine, llm_available
 from keyboards import chat_menu_kb, main_menu_kb, topics_kb, back_topics_kb
-from plans import LIMITS
+from plans import LIMITS, UPGRADE_HINTS
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -45,6 +47,24 @@ async def _show_topics(message: Message, db: Database, user_id: int) -> None:
         text += f"На бесплатном плане открыто {oc} из {len(TOPICS)} тем.\n"
     text += "Можно и без темы — «🆓 Free conversation»."
     await message.answer(text, parse_mode="HTML", reply_markup=topics_kb(oc))
+
+
+async def _chat_quota(message: Message, db: Database, state: FSMContext) -> bool:
+    """Дневной лимит реплик для free. False — лимит исчерпан."""
+    uid = message.from_user.id
+    tier, _ = await db.get_plan(uid)
+    if tier != "free":
+        return True
+    if await db.within_limit(uid, "chat", LIMITS.free_chat_messages_per_day):
+        return True
+    used = await db.get_usage(uid, "chat")
+    await message.answer(
+        f"📭 Лимит сообщений чата на сегодня исчерпан ({used}/{LIMITS.free_chat_messages_per_day}).\n\n"
+        + UPGRADE_HINTS["chat"].format(limit=LIMITS.free_chat_messages_per_day),
+        reply_markup=main_menu_kb(),
+    )
+    await state.clear()
+    return False
 
 
 async def cmd_chat(message: Message, state: FSMContext, db: Database) -> None:
@@ -153,10 +173,72 @@ async def exit_chat(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ChatStates.in_chat, F.text & ~F.text.in_(EXIT_LABELS))
-async def chat_message(message: Message, state: FSMContext) -> None:
+async def chat_message(message: Message, state: FSMContext, db: Database) -> None:
+    if not await _chat_quota(message, db, state):
+        return
     data = await state.get_data()
     topic_id = data.get("topic")
     turn = int(data.get("turn") or 0)
     reply, new_turn = local_engine.reply(message.text, topic_id, turn)
     await state.update_data(turn=new_turn)
+    await db.incr_usage(message.from_user.id, "chat")
     await message.answer(reply, parse_mode="HTML", reply_markup=back_topics_kb())
+
+
+@router.message(ChatStates.in_chat, F.voice)
+async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot) -> None:
+    """Голосовое сообщение в чате: STT -> ответ движка."""
+    import speech
+
+    uid = message.from_user.id
+    if not await db.is_allowed(uid, "voice"):
+        await message.answer(UPGRADE_HINTS["voice"], reply_markup=chat_menu_kb())
+        return
+    tier, _ = await db.get_plan(uid)
+    if tier == "plus" and not await db.within_limit(uid, "voice_in", LIMITS.plus_voice_inputs_per_day):
+        used = await db.get_usage(uid, "voice_in")
+        await message.answer(
+            f"📭 Лимит голосовых на сегодня исчерпан ({used}/{LIMITS.plus_voice_inputs_per_day}).\n"
+            "Без лимита — на 👑 Premium: /premium",
+            reply_markup=chat_menu_kb(),
+        )
+        return
+    if not await _chat_quota(message, db, state):
+        return
+    if not speech.stt_available():
+        await message.answer("🎙 Распознавание речи сейчас недоступно.", reply_markup=chat_menu_kb())
+        return
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        buf = io.BytesIO()
+        await bot.download_file(file.file_path, destination=buf)
+        text = await asyncio.to_thread(speech.transcribe, buf.getvalue(), "voice.ogg")
+    except Exception as exc:
+        logger.warning("voice failed: %s", exc)
+        await message.answer(
+            "😅 Не удалось обработать голосовое. Попробуйте ещё раз.",
+            reply_markup=chat_menu_kb(),
+        )
+        return
+    if not text:
+        await message.answer(
+            "😅 Не разобрал речь. Скажите чуть громче и чётче.",
+            reply_markup=chat_menu_kb(),
+        )
+        return
+    await db.incr_usage(uid, "voice_in")
+    await db.incr_usage(uid, "chat")
+    data = await state.get_data()
+    turn = int(data.get("turn") or 0)
+    reply, new_turn = local_engine.reply(text, data.get("topic"), turn)
+    await state.update_data(turn=new_turn)
+    await message.answer(f"🎙 <i>Распознано:</i> {text}", parse_mode="HTML")
+    await message.answer(reply, parse_mode="HTML", reply_markup=back_topics_kb())
+
+
+@router.message(F.voice)
+async def voice_outside_chat(message: Message) -> None:
+    await message.answer(
+        "🎙 Голосовые работают в режиме разговора — нажмите «🗣 Chat with me».",
+        reply_markup=main_menu_kb(),
+    )
