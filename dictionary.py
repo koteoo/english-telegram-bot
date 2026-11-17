@@ -654,24 +654,67 @@ def _ru_plural(word: str) -> str | None:
     words = word.split()
     if not words or len(words) > 3:
         return None
-    parses = [m.parse(w)[0] for w in words]
+
+    # Берём разбор, где слово - существительное/прилагательное в им./вин. падеже
+    parses = []
+    for wd in words:
+        cands = m.parse(wd)
+        best = cands[0]
+        for p in cands:
+            if p.tag.POS in ("NOUN", "ADJF", "PRTF") and p.tag.case in ("nomn", "accs"):
+                best = p
+                break
+        parses.append(best)
+
     if not any(p.tag.POS == "NOUN" for p in parses):
         if len(words) == 1 and parses[0].tag.POS in ("ADJF", "PRTF"):
             f = parses[0].inflect({"plur", "nomn"})
             return f.word if f else None
         return None
+
+    head = next(p for p in parses if p.tag.POS == "NOUN")
+    if head.tag.case not in ("nomn", "accs") or head.tag.number != "sing":
+        return None
+
     for p in parses:
         if p.tag.POS not in ("NOUN", "ADJF", "PRTF"):
             return None
-        if "Sgtm" in p.tag or "Pltm" in p.tag:
+        if "Sgtm" in p.tag or "Pltm" in p.tag or p.normal_form in _RU_MASS:
             return None
+
     out = []
     for p in parses:
-        f = p.inflect({"plur", "nomn"})
+        # зависимое существительное сохраняет свой падеж, остальныеagree с головным
+        case = "nomn" if (p is head or p.tag.POS != "NOUN") else (p.tag.case or "nomn")
+        f = p.inflect({"plur", case})
         if not f:
             return None
         out.append(f.word)
     return " ".join(out)
+
+
+_RU_MASS = {"посуда", "мебель", "одежда", "обувь", "листва", "детвора",
+            "молодёжь", "бельё", "утварь", "древесина"}
+
+
+def _mueller_ru(en: str) -> list[str]:
+    """Отфильтрованные русские значения статьи Мюллера для английского слова."""
+    out = []
+    for raw in _ruen_en_ru.get(en, []):
+        v = str(raw).strip().lower()
+        if not v or re.search(r"[a-z]", v):
+            continue
+        if any(ch in v for ch in "()[]{}"):
+            continue
+        if re.search(r"\d+[.)]", v) or re.search(r"[а-яё]\)", v):
+            continue
+        words = v.split()
+        if not words or len(words) > 4:
+            continue
+        if not ("а" <= v[0] <= "я" or v[0] == "ё"):
+            continue
+        out.append(" ".join(dict.fromkeys(words)))
+    return list(dict.fromkeys(out))
 
 
 def en_ru_lookup(word: str) -> tuple[str, str] | None:
@@ -679,12 +722,14 @@ def en_ru_lookup(word: str) -> tuple[str, str] | None:
     w = word.lower().strip().strip(".!,;:? ")
     if not w:
         return None
+    lemma = w
     hit = local_lookup(w, "en-ru")
     plural = False
     if not hit:
         for cand in _en_lemmas(w):
             hit = local_lookup(cand, "en-ru")
             if hit:
+                lemma = cand
                 plural = w in _EN_PLURAL_IRREG or (
                     len(cand) < len(w) and w.endswith("s")
                     and not w.endswith(("ing", "ed", "er", "est"))
@@ -694,6 +739,12 @@ def en_ru_lookup(word: str) -> tuple[str, str] | None:
         return None
 
     values = [v.strip() for v in hit[0].split(",") if v.strip()]
+    source = hit[1]
+    if len(values) < 5:
+        for extra in _mueller_ru(lemma):
+            if extra not in values:
+                values.append(extra)
+                source = "RuEnDict"
 
     m = _get_morph()
     has_single_noun = False
@@ -718,4 +769,4 @@ def en_ru_lookup(word: str) -> tuple[str, str] | None:
     uniq = [x for x in dict.fromkeys(values) if x][:5]
     if not uniq:
         return None
-    return ", ".join(uniq), hit[1]
+    return ", ".join(uniq), source
