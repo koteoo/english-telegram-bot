@@ -12,6 +12,9 @@ from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
 
+# Текущая серия верных ответов квиза (в памяти; рекорд хранится в БД)
+_quiz_streak: dict[int, int] = {}
+
 
 async def _effective_level(db: Database, user_id: int) -> tuple[str, str]:
     """Уровень для выдачи слов: на бесплатном плане словарь ограничен Beginner."""
@@ -152,17 +155,21 @@ async def quiz_answer(call: CallbackQuery, db: Database) -> None:
     correct = q[4]
     right_word = q[2] if correct == "A" else q[3]
     if choice == correct:
-        stats = await db.get_stats(call.from_user.id)
-        record = await db.update_quiz_result(call.from_user.id, stats["quiz_best"] + 1)
+        streak = _quiz_streak.get(call.from_user.id, 0) + 1
+        _quiz_streak[call.from_user.id] = streak
+        record = await db.update_quiz_result(call.from_user.id, streak)
         await call.message.edit_text(
-            f"🎉 Правильно! Ответ: <b>{right_word}</b>."
+            f"🎉 Правильно! Ответ: <b>{right_word}</b>.\n"
+            f"🔥 Серия: <b>{streak}</b>"
             + ("\n\n🏆 Новый рекорд квиза!" if record else ""),
             parse_mode="HTML",
         )
     else:
+        lost = _quiz_streak.pop(call.from_user.id, 0)
         await call.message.edit_text(
             f"😅 Неверно. Правильный ответ: <b>{right_word}</b>.\n"
-            "Нажми «✍️ Quiz», чтобы попробовать ещё раз.",
+            + (f"Серия из {lost} прервана.\n" if lost else "")
+            + "Нажми «✍️ Quiz», чтобы попробовать ещё раз.",
             parse_mode="HTML",
         )
     await call.answer()
