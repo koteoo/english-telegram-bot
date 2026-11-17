@@ -566,10 +566,8 @@ def _en_plural(word: str) -> str:
     # уже множественное: spectacles, specs
     if low.endswith("s") and not low.endswith(("ss", "us", "is")) and low not in _EN_NEEDS_ES:
         return word
-    # прилагательные/причастия: spectacled, goggled, building
+    # прилагательные/причастия: spectacled, goggled
     if low.endswith("ed") and len(low) >= 6:
-        return word
-    if low.endswith("ing") and len(low) >= 8:
         return word
     if low in _EN_PLURAL_IRREGULAR:
         new = _EN_PLURAL_IRREGULAR[low]
@@ -612,7 +610,7 @@ def ru_en_multi(word: str) -> tuple[str, str] | None:
     if not uniq:
         return None
     if _ru_is_plural(w):
-        uniq = [_en_plural(v) for v in uniq]
+        uniq = list(dict.fromkeys(_en_plural(v) for v in uniq))
     return ", ".join(uniq[:5]), "RuEnDict"
 
 
