@@ -282,6 +282,7 @@ def load_full_en_ru_index():
 
 async def preload() -> None:
     await asyncio.to_thread(_load_ruedict_sync)
+    await asyncio.to_thread(_build_ru_multi)
     try:
         from speech import stt_available, warmup_stt
         if stt_available():
