@@ -25,7 +25,7 @@ TOPICS = [
         "phrases": [
             ("I'd like to book a room for two nights.", "Я хотел бы забронировать номер на две ночи."),
             ("Where is the nearest subway station?", "Где ближайшая станция метро?"),
-            ("Could I see the menu, please?", "Можно мне меню, пожалуйста?"),
+            ("Could you call a taxi to the airport, please?", "Не могли бы вы вызвать такси в аэропорт?"),
             ("My flight was delayed by three hours.", "Мой рейс задержали на три часа."),
             ("I'm just here for the sights.", "Я здесь только ради достопримечательностей."),
         ],
@@ -55,6 +55,7 @@ TOPICS = [
             ("It tastes delicious / salty / spicy.", "На вкус очень вкусно / солоно / остро."),
             ("I usually have cereal for breakfast.", "Обычно я ем хлопья на завтрак."),
             ("Would you like something to drink?", "Хотите что-нибудь выпить?"),
+            ("Could I see the menu, please?", "Можно мне меню, пожалуйста?"),
         ],
         "questions": [
             "What did you eat yesterday? Describe it in detail.",
