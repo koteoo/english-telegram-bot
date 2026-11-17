@@ -920,12 +920,11 @@ def en_ru_lookup(word: str) -> tuple[str, str] | None:
     if m and not has_single_noun:
         heads = [h for h in (_ru_head_noun(v) for v in values) if h]
         if heads:
-            kept = []
-            for v in values:
-                if " " not in v and m.parse(v)[0].tag.POS == "ADJF":
-                    continue
-                kept.append(v)
-            values = heads + kept
+            values = heads + values
+            has_single_noun = True
+    if m and has_single_noun:
+        values = [v for v in values
+                  if not (" " not in v and m.parse(v)[0].tag.POS == "ADJF")]
 
     if plural:
         values = [_ru_plural(v) or v for v in values]

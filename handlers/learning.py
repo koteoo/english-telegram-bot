@@ -47,8 +47,11 @@ async def word_of_day(message: Message, db: Database) -> None:
             reply_markup=main_menu_kb(),
         )
         return
-    item = db.random_word(eff_level)
-    added = await db.add_word_to_deck(message.from_user.id, item.word)
+    seen = {w.lower() for w in await db.deck_words(message.from_user.id)}
+    item = db.random_word(eff_level, exclude=seen)
+    added = await db.add_word_to_deck(
+        message.from_user.id, item.word, item.translation, item.example
+    )
     await db.incr_usage(message.from_user.id, "words")
     lock_note = ""
     if eff_level != real_level:

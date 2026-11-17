@@ -189,9 +189,12 @@ class Database:
 
     # ---------------- Случайные слова уровня ----------------
     @staticmethod
-    def random_word(level: str) -> CardItem:
+    def random_word(level: str, exclude: set[str] | None = None) -> CardItem:
         words = VOCABULARY.get(level) or VOCABULARY["beginner"]
-        w, t, e = random.choice(words)
+        pool = [w for w in words if not exclude or w[0].lower() not in exclude]
+        if not pool:
+            pool = words
+        w, t, e = random.choice(pool)
         return CardItem(w, t, e, 0)
 
     # ---------------- Статистика ----------------
