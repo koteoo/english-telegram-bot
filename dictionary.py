@@ -600,6 +600,50 @@ def _en_plural(word: str) -> str:
     return " ".join(parts)
 
 
+_EN_ADV_IRREGULAR = {"good": "well", "fast": "fast", "hard": "hard",
+                     "late": "late", "early": "early", "straight": "straight",
+                     "high": "high", "low": "low", "deep": "deep",
+                     "near": "near", "wrong": "wrong", "right": "right",
+                     "long": "long", "short": "short"}
+
+
+def _en_adverb(adj: str) -> str | None:
+    """'quick' -> 'quickly', 'chilly' -> 'chillily', 'gentle' -> 'gently'."""
+    w = adj.lower().strip()
+    if not w or " " in w or "-" in w:
+        return None
+    if w in _EN_ADV_IRREGULAR:
+        return _EN_ADV_IRREGULAR[w]
+    if w.endswith("ly"):
+        return w
+    if len(w) < 3:
+        return None
+    if len(w) > 3 and w.endswith("y"):
+        return w[:-1] + "ily"
+    if w.endswith("le"):
+        return w[:-1] + "y"
+    if w.endswith("ic"):
+        return w + "ally"
+    if w.endswith("ll"):
+        return w + "y"
+    return w + "ly"
+
+
+def _ru_adv_to_adj(word: str) -> str | None:
+    """'прохладно' -> 'прохладный'; для не-наречий None."""
+    m = _get_morph()
+    if not m or not word.endswith("о") or len(word) < 4:
+        return None
+    if m.parse(word)[0].tag.POS != "ADVB":
+        return None
+    base = word[:-1]
+    for suf in ("ый", "ий", "ой"):
+        for q in m.parse(base + suf):
+            if q.tag.POS == "ADJF" and q.tag.case in ("nomn", "accs"):
+                return q.normal_form
+    return None
+
+
 def ru_en_multi(word: str) -> tuple[str, str] | None:
     """RU -> EN: несколько вариантов вместо одного."""
     _load_ruedict_sync()
@@ -623,7 +667,17 @@ def ru_en_multi(word: str) -> tuple[str, str] | None:
     if old:
         results.append(str(old).strip())
 
-    uniq = [x for x in dict.fromkeys(results) if x]
+    # Наречия выводим из прилагательного: прохладно <- прохладный <- cool -> coolly
+    adv_extra = []
+    adj = _ru_adv_to_adj(w)
+    if adj:
+        na = _normalize_ru(adj)
+        for v in (_ru_multi.get(na) or _ru_multi.get(adj) or []):
+            a = _en_adverb(v)
+            if a:
+                adv_extra.append(a)
+
+    uniq = [x for x in dict.fromkeys(adv_extra + results) if x]
     if not uniq:
         return None
     if _ru_is_plural(w):
