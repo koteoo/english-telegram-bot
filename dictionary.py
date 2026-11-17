@@ -196,7 +196,22 @@ def load_full_en_ru_index():
             # Фильтр головы: только буквы/дефисы/апострофы, длина до 64
             if not re.match(r"^[a-z][a-z'’\-]{0,63}$", head): continue
             
-            definition = " ".join(lines[1:])
+            # Вырезаем секцию идиом, но сохраняем следующие части речи:
+            # у Мюллера после "*)" идёт "2. _adv.", "3. _v." и т.д.
+            kept_lines = []
+            in_idioms = False
+            for ln in lines[1:]:
+                if re.match(r"^\d+\.\s*_", ln):
+                    in_idioms = False
+                if "*)" in ln:
+                    ln = ln.split("*)")[0].strip()
+                    in_idioms = True
+                    if ln:
+                        kept_lines.append(ln)
+                    continue
+                if not in_idioms and ln:
+                    kept_lines.append(ln)
+            definition = " ".join(kept_lines)
             
             # 1. Удаляем фонетическую транскрипцию [...]
             def_clean = phonetic_re.sub(" ", definition)
@@ -205,8 +220,9 @@ def load_full_en_ru_index():
             # 3. Удаляем маркеры частей речи (_n., _v.t. и т.д.)
             def_clean = marker_re.sub(" ", def_clean)
             def_clean = marker_re.sub(" ", def_clean) # Второй проход
-            # Отрезаем секцию идиом/примеров (начинается с "*)")
-            def_clean = def_clean.split("*)")[0]
+            # Убираем сноски {см. ...} и хвосты "и пр.", "и т.п."
+            def_clean = re.sub(r"\{[^}]*\}", " ", def_clean)
+            def_clean = re.sub(r"\bи (?:пр|т\. ?[пд])\.?", " ", def_clean)
             
             # 4. Отделяем основное значение от примеров (обычно после двоеточия)
             # В Мюллере формат: "значение1, значение2 : пример1; пример2"
@@ -263,7 +279,7 @@ def load_full_en_ru_index():
 
             if valid_meanings:
                 # Уникализируем список значений для этого английского слова
-                unique_vals = list(dict.fromkeys(valid_meanings))[:5]
+                unique_vals = list(dict.fromkeys(valid_meanings))[:25]
                 temp_en_to_rus[head].extend(unique_vals)
         
         # Заменяем глобальный словарь
@@ -484,10 +500,10 @@ def _build_ru_multi() -> None:
             continue
         if not re.fullmatch(r"[a-z][a-z'\-]{1,24}", en):
             continue
-        bonus = min(len(ru_list), 15)
+        bonus = min(len(ru_list), 5)
         if en in _en_ru:
             bonus += 25
-        for pos, raw in enumerate(ru_list[:10]):
+        for pos, raw in enumerate(ru_list[:25]):
             val = str(raw).strip().lower()
             if not val or re.search(r"[a-z]", val):
                 continue
@@ -496,11 +512,11 @@ def _build_ru_multi() -> None:
             words = val.split()
             if not words or len(words) > 3:
                 continue
-            variants = [(norm(val), pos)]
+            variants = [(norm(val), pos * 2)]
             if len(words) > 1:
                 for wd in words:
                     if len(wd) > 2 and wd not in stop:
-                        variants.append((norm(wd), pos + 4))
+                        variants.append((norm(wd), pos * 2 + 6))
             for key, pos_sc in variants:
                 if not key:
                     continue
