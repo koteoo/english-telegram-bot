@@ -87,29 +87,5 @@ EXTRA_QUIZ_SENTENCES = []
 # Чтобы добавить свои слова — правьте data/vocab_extra.py.
 # ----------------------------------------------------------------------------
 
-def _merge_extended() -> None:
-    from data.vocab_extra import (
-        EXTENDED_BEGINNER, EXTENDED_INTERMEDIATE, EXTENDED_ADVANCED,
-        EXTRA_QUIZ_SENTENCES,
-    )
-    mapping = {
-        "beginner": EXTENDED_BEGINNER,
-        "intermediate": EXTENDED_INTERMEDIATE,
-        "advanced": EXTENDED_ADVANCED,
-    }
-    for level, extra in mapping.items():
-        base = VOCABULARY[level]
-        seen = {w.lower() for w, _, _ in base}
-        for word, trans, ex in extra:
-            if word.lower() not in seen:
-                base.append((word, trans, ex))
-                seen.add(word.lower())
-
-    existing = {q[0].strip() for q in QUIZ_SENTENCES}
-    for q in EXTRA_QUIZ_SENTENCES:
-        if q[0].strip() not in existing:
-            QUIZ_SENTENCES.append(q)
-            existing.add(q[0].strip())
-
-
-_merge_extended()
+# Слияние с VOCABULARY выполняется в data/vocabulary.py.
+# Этот модуль - только данные, импорт безопасен.

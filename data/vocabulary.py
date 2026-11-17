@@ -83,3 +83,20 @@ QUIZ_SENTENCES = [
     ("She has lived here ___ 2010.", "Она живёт здесь с 2010 года.", "since", "for", "A"),
     ("I look forward to ___ from you.", "Жду от тебя письма.", "hearing", "hear", "A"),
 ]
+
+
+# --- Расширение базы из data/vocab_extra.py (без дубликатов) ---
+from data.vocab_extra import (
+    EXTENDED_BEGINNER, EXTENDED_INTERMEDIATE, EXTENDED_ADVANCED,
+)
+
+for _level, _extra in (
+    ("beginner", EXTENDED_BEGINNER),
+    ("intermediate", EXTENDED_INTERMEDIATE),
+    ("advanced", EXTENDED_ADVANCED),
+):
+    _seen = {w.lower() for w, _, _ in VOCABULARY[_level]}
+    for _w, _t, _e in _extra:
+        if _w.lower() not in _seen:
+            VOCABULARY[_level].append((_w, _t, _e))
+            _seen.add(_w.lower())
