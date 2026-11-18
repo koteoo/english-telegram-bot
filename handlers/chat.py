@@ -1,7 +1,9 @@
 """Интерактивный чат на английском: выбор темы + офлайн-движок."""
 import asyncio
+import html
 import io
 import logging
+import re
 import time
 
 from aiogram import Router, F, Bot
@@ -12,7 +14,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from db import Database
 from data.topics import TOPICS, TOPIC_BY_ID, topic_idea
-from chat_engine import local_engine, llm_available
+from chat_engine import local_engine, llm_available, chat_reply
 from keyboards import chat_menu_kb, main_menu_kb, topics_kb, back_topics_kb
 from plans import LIMITS, UPGRADE_HINTS
 
@@ -68,10 +70,39 @@ async def _chat_quota(message: Message, db: Database, state: FSMContext) -> bool
     return False
 
 
+def _fmt(text: str) -> str:
+    """Ответ LLM: экранировать HTML и превратить Markdown-акценты в теги."""
+    t = html.escape(text)
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t, flags=re.S)
+    t = re.sub(r"\*(.+?)\*", r"<i>\1</i>", t, flags=re.S)
+    return t
+
+
+async def _respond(message: Message, state: FSMContext, db: Database, user_text: str) -> None:
+    """Ответ ученику: LLM, при недоступности — офлайн-движок."""
+    data = await state.get_data()
+    topic_id = data.get("topic")
+    turn = int(data.get("turn") or 0)
+    history = list(data.get("history") or [])
+    history.append({"role": "user", "content": user_text})
+    level = await db.get_level(message.from_user.id)
+
+    answer = await chat_reply(history, topic_id, level)
+    if answer:
+        history.append({"role": "assistant", "content": answer})
+        body = _fmt(answer)
+    else:
+        offline, turn = local_engine.reply(user_text, topic_id, turn)
+        body = offline  # офлайн-движок уже отдаёт HTML
+
+    await state.update_data(turn=turn, history=history[-12:])
+    await message.answer(body, parse_mode="HTML", reply_markup=back_topics_kb())
+
+
 async def cmd_chat(message: Message, state: FSMContext, db: Database) -> None:
     """Вход в режим чата."""
     await state.set_state(ChatStates.in_chat)
-    await state.update_data(topic=None, turn=0)
+    await state.update_data(topic=None, turn=0, history=[])
     text = (
         "🗣 <b>Давай попрактикуем английский!</b>\n\n"
         "Пиши мне на английском — я поддержу разговор.\n"
@@ -116,7 +147,7 @@ async def cb_topic_pick(call: CallbackQuery, db: Database, state: FSMContext) ->
     topic = TOPIC_BY_ID.get(topic_id)
     tid = topic["id"] if topic else None
     await state.set_state(ChatStates.in_chat)
-    await state.update_data(topic=tid, turn=0)
+    await state.update_data(topic=tid, turn=0, history=[])
     await call.answer()
     if topic:
         en, ru = topic["phrases"][0]
@@ -177,13 +208,8 @@ async def exit_chat(message: Message, state: FSMContext) -> None:
 async def chat_message(message: Message, state: FSMContext, db: Database) -> None:
     if not await _chat_quota(message, db, state):
         return
-    data = await state.get_data()
-    topic_id = data.get("topic")
-    turn = int(data.get("turn") or 0)
-    reply, new_turn = local_engine.reply(message.text, topic_id, turn)
-    await state.update_data(turn=new_turn)
     await db.incr_usage(message.from_user.id, "chat")
-    await message.answer(reply, parse_mode="HTML", reply_markup=back_topics_kb())
+    await _respond(message, state, db, message.text)
 
 
 @router.message(ChatStates.in_chat, F.voice)
@@ -227,16 +253,12 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
         return
     await db.incr_usage(uid, "voice_in")
     await db.incr_usage(uid, "chat")
-    data = await state.get_data()
-    turn = int(data.get("turn") or 0)
-    reply, new_turn = local_engine.reply(text, data.get("topic"), turn)
-    await state.update_data(turn=new_turn)
     await note.edit_text(
-        f"🎙 <i>Распознано:</i> {text}\n"
+        f"🎙 <i>Распознано:</i> {html.escape(text)}\n"
         f"<i>⏱ аудио {message.voice.duration} c · загрузка {t_dl:.1f} c · распознавание {t_stt:.1f} c</i>",
         parse_mode="HTML",
     )
-    await message.answer(reply, parse_mode="HTML", reply_markup=back_topics_kb())
+    await _respond(message, state, db, text)
 
 
 @router.message(F.voice)

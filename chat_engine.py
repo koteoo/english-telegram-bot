@@ -265,3 +265,15 @@ local_engine = LocalChatEngine()
 async def ask_llm(messages: list, temperature: float = 0.7, max_tokens: int = 100) -> str | None:
     """Временная заглушка, чтобы старый dictionary.py не падал при импорте."""
     return None
+
+
+async def chat_reply(history: list[dict], topic_id: str | None, level: str) -> str | None:
+    """LLM с failover. None — цепочка недоступна, вызывающий уходит в офлайн."""
+    import asyncio
+    if not llm_available():
+        return None
+    try:
+        return await asyncio.to_thread(_llm_reply, history, topic_id, level)
+    except Exception as exc:
+        logger.warning("LLM chain failed: %s", exc)
+        return None
