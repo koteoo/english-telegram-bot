@@ -113,7 +113,7 @@ _providers: list[Provider] = [
         "ollama",
         os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
         os.getenv("OLLAMA_API_KEY", "ollama" if os.getenv("OLLAMA_ENABLED", "").lower() in ("1", "on", "true", "yes") else ""),
-        os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M"),
+        os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b-instruct-q4_K_M"),
     ),
 ]
 
