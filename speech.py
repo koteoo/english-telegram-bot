@@ -169,6 +169,10 @@ def _tts_openai_compatible(text: str) -> bytes | None:
     """OpenAI-совместимый /audio/speech (Selectel, Cloud.ru, локальный faster-piper и т.п.)."""
     if not (SPEECH_BASE_URL and SPEECH_API_KEY):
         return None
+    # Явное включение: у Groq озвучка требует другой модели/голоса/формата,
+    # поэтому по умолчанию работаем локальным Piper.
+    if os.getenv("TTS_API_ENABLED", "").lower() not in ("1", "on", "true", "yes"):
+        return None
     payload = json.dumps({
         "model": os.getenv("TTS_MODEL", "tts-1"),
         "input": text[:500],
