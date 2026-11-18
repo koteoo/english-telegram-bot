@@ -3,11 +3,12 @@ import asyncio
 import html
 import io
 import logging
+import os
 import re
 import time
 
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -78,6 +79,52 @@ def _fmt(text: str) -> str:
     return t
 
 
+def _plain(text: str) -> str:
+    """Текст для озвучки: без HTML-тегов и Markdown-акцентов."""
+    t = re.sub(r"<[^>]+>", "", text)
+    t = html.unescape(t)
+    return t.replace("*", "").replace("`", "").strip()
+
+
+async def _chat_kb(state: FSMContext):
+    """Клавиатура чата: кнопка озвучки только в режиме toggle."""
+    if os.getenv("VOICE_REPLY_ENABLED", "off").lower() != "toggle":
+        return chat_menu_kb()
+    data = await state.get_data()
+    return chat_menu_kb(bool(data.get("voice")))
+
+
+async def _maybe_voice(message: Message, state: FSMContext, db: Database, text: str) -> None:
+    """Озвучить ответ, если режим включён и тариф позволяет."""
+    mode = os.getenv("VOICE_REPLY_ENABLED", "off").lower()
+    data = await state.get_data()
+    if mode == "off" or (mode == "toggle" and not data.get("voice")):
+        return
+    uid = message.from_user.id
+    if not await db.is_allowed(uid, "voice"):
+        return
+    tier, _ = await db.get_plan(uid)
+    if tier == "plus" and not await db.within_limit(uid, "voice_out", LIMITS.plus_voice_replies_per_day):
+        return
+    import speech
+    if not speech.tts_available():
+        return
+    try:
+        res = await asyncio.to_thread(speech.synthesize, text[:500])
+    except Exception as exc:
+        logger.warning("TTS failed: %s", exc)
+        return
+    if not res:
+        return
+    audio, fmt = res
+    await db.incr_usage(uid, "voice_out")
+    file = BufferedInputFile(audio, filename="reply.ogg" if fmt == "ogg" else "reply.mp3")
+    if fmt == "ogg":
+        await message.answer_voice(voice=file)
+    else:
+        await message.answer_audio(audio=file)
+
+
 async def _respond(message: Message, state: FSMContext, db: Database, user_text: str) -> None:
     """Ответ ученику: LLM, при недоступности — офлайн-движок."""
     data = await state.get_data()
@@ -91,12 +138,15 @@ async def _respond(message: Message, state: FSMContext, db: Database, user_text:
     if answer:
         history.append({"role": "assistant", "content": answer})
         body = _fmt(answer)
+        plain = _plain(answer)
     else:
         offline, turn = local_engine.reply(user_text, topic_id, turn)
         body = offline  # офлайн-движок уже отдаёт HTML
+        plain = _plain(offline)
 
     await state.update_data(turn=turn, history=history[-12:])
     await message.answer(body, parse_mode="HTML", reply_markup=back_topics_kb())
+    await _maybe_voice(message, state, db, plain)
 
 
 async def cmd_chat(message: Message, state: FSMContext, db: Database) -> None:
@@ -111,7 +161,7 @@ async def cmd_chat(message: Message, state: FSMContext, db: Database) -> None:
     )
     if not llm_available():
         text += "\n\n<i>Сейчас я работаю офлайн: задаю вопросы по теме и подсказываю фразы.</i>"
-    await message.answer(text, parse_mode="HTML", reply_markup=chat_menu_kb())
+    await message.answer(text, parse_mode="HTML", reply_markup=await _chat_kb(state))
     await _show_topics(message, db, message.from_user.id)
 
 
@@ -155,12 +205,12 @@ async def cb_topic_pick(call: CallbackQuery, db: Database, state: FSMContext) ->
             f"{topic['emoji']} <b>{topic['title']}</b>\n<i>{topic['description']}</i>\n\n"
             f"💡 Idea: <i>{topic_idea(topic, 0)}</i>\n\n"
             f"🎓 Useful phrase:\n<b>{en}</b>\n<i>({ru})</i>",
-            parse_mode="HTML", reply_markup=chat_menu_kb(),
+            parse_mode="HTML", reply_markup=await _chat_kb(state),
         )
     else:
         await call.message.answer(
             "🆓 <b>Free conversation</b>\n\nПиши на английском — я поддержу разговор.",
-            parse_mode="HTML", reply_markup=chat_menu_kb(),
+            parse_mode="HTML", reply_markup=await _chat_kb(state),
         )
     reply, turn = local_engine.reply("hello", tid, 0)
     await state.update_data(turn=turn)
@@ -180,7 +230,7 @@ async def chat_help(message: Message, state: FSMContext) -> None:
         await message.answer(
             "🙋 Выбери тему через «💬 Change topic» — тогда покажу фразы и идеи.\n"
             "Или напиши по-русски, если не знаешь, как сказать.",
-            reply_markup=chat_menu_kb(),
+            reply_markup=await _chat_kb(state),
         )
         return
     phrases = "\n".join(f"• <b>{en}</b>\n  <i>{ru}</i>" for en, ru in topic["phrases"])
@@ -188,7 +238,18 @@ async def chat_help(message: Message, state: FSMContext) -> None:
     await message.answer(
         f"🙋 <b>{topic['emoji']} {topic['title']}</b>\n\n"
         f"🎓 Фразы:\n{phrases}\n\n💡 О чём поговорить:\n{ideas}",
-        parse_mode="HTML", reply_markup=chat_menu_kb(),
+        parse_mode="HTML", reply_markup=await _chat_kb(state),
+    )
+
+
+@router.message(ChatStates.in_chat, F.text.in_({"🎙 Voice reply: on", "🔇 Voice reply: off"}))
+async def chat_voice_toggle(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    new = not bool(data.get("voice"))
+    await state.update_data(voice=new)
+    await message.answer(
+        "🎙 Озвучка ответов включена." if new else "🔇 Озвучка ответов выключена.",
+        reply_markup=await _chat_kb(state),
     )
 
 
@@ -219,7 +280,7 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
 
     uid = message.from_user.id
     if not await db.is_allowed(uid, "voice"):
-        await message.answer(UPGRADE_HINTS["voice"], reply_markup=chat_menu_kb())
+        await message.answer(UPGRADE_HINTS["voice"], reply_markup=await _chat_kb(state))
         return
     tier, _ = await db.get_plan(uid)
     if tier == "plus" and not await db.within_limit(uid, "voice_in", LIMITS.plus_voice_inputs_per_day):
@@ -227,13 +288,13 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
         await message.answer(
             f"📭 Лимит голосовых на сегодня исчерпан ({used}/{LIMITS.plus_voice_inputs_per_day}).\n"
             "Без лимита — на 👑 Premium: /premium",
-            reply_markup=chat_menu_kb(),
+            reply_markup=await _chat_kb(state),
         )
         return
     if not await _chat_quota(message, db, state):
         return
     if not speech.stt_available():
-        await message.answer("🎙 Распознавание речи сейчас недоступно.", reply_markup=chat_menu_kb())
+        await message.answer("🎙 Распознавание речи сейчас недоступно.", reply_markup=await _chat_kb(state))
         return
     note = await message.answer("⏳ Распознаю голосовое…")
     t0 = time.monotonic()
