@@ -314,9 +314,9 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
         return
     await db.incr_usage(uid, "voice_in")
     await db.incr_usage(uid, "chat")
+    logger.info("voice: audio=%ss dl=%.1fs stt=%.1fs", message.voice.duration, t_dl, t_stt)
     await note.edit_text(
-        f"🎙 <i>Распознано:</i> {html.escape(text)}\n"
-        f"<i>⏱ аудио {message.voice.duration} c · загрузка {t_dl:.1f} c · распознавание {t_stt:.1f} c</i>",
+        f"🎙 <i>Распознано:</i> {html.escape(text)}",
         parse_mode="HTML",
     )
     await _respond(message, state, db, text)
