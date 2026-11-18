@@ -107,7 +107,7 @@ _providers: list[Provider] = [
         "groq",
         os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
         _groq_key or os.getenv("OPENAI_API_KEY", ""),
-        os.getenv("OPENAI_MODEL", "llama-3.3-70b-versatile" if _groq_key else "gpt-4o-mini"),
+        os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b" if _groq_key else "gpt-4o-mini"),
     ),
     Provider(
         "ollama",
