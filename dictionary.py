@@ -304,7 +304,7 @@ async def preload() -> None:
         if stt_available():
             await asyncio.to_thread(warmup_stt)
     except Exception as e:
-        log.debug("Whisper warmup skipped: %s", e)
+        log.warning("Whisper warmup skipped: %s", e)
 
 
 _LLM_PROMPT = (

@@ -2,6 +2,7 @@
 import asyncio
 import io
 import logging
+import time
 
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
@@ -208,23 +209,21 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
     if not speech.stt_available():
         await message.answer("🎙 Распознавание речи сейчас недоступно.", reply_markup=chat_menu_kb())
         return
+    note = await message.answer("⏳ Распознаю голосовое…")
+    t0 = time.monotonic()
     try:
         file = await bot.get_file(message.voice.file_id)
         buf = io.BytesIO()
         await bot.download_file(file.file_path, destination=buf)
+        t_dl = time.monotonic() - t0
         text = await asyncio.to_thread(speech.transcribe, buf.getvalue(), "voice.ogg")
+        t_stt = time.monotonic() - t0 - t_dl
     except Exception as exc:
         logger.warning("voice failed: %s", exc)
-        await message.answer(
-            "😅 Не удалось обработать голосовое. Попробуйте ещё раз.",
-            reply_markup=chat_menu_kb(),
-        )
+        await note.edit_text("😅 Не удалось обработать голосовое. Попробуйте ещё раз.")
         return
     if not text:
-        await message.answer(
-            "😅 Не разобрал речь. Скажите чуть громче и чётче.",
-            reply_markup=chat_menu_kb(),
-        )
+        await note.edit_text("😅 Не разобрал речь. Скажите чуть громче и чётче.")
         return
     await db.incr_usage(uid, "voice_in")
     await db.incr_usage(uid, "chat")
@@ -232,7 +231,11 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
     turn = int(data.get("turn") or 0)
     reply, new_turn = local_engine.reply(text, data.get("topic"), turn)
     await state.update_data(turn=new_turn)
-    await message.answer(f"🎙 <i>Распознано:</i> {text}", parse_mode="HTML")
+    await note.edit_text(
+        f"🎙 <i>Распознано:</i> {text}\n"
+        f"<i>⏱ аудио {message.voice.duration} c · загрузка {t_dl:.1f} c · распознавание {t_stt:.1f} c</i>",
+        parse_mode="HTML",
+    )
     await message.answer(reply, parse_mode="HTML", reply_markup=back_topics_kb())
 
 

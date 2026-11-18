@@ -106,6 +106,27 @@ def stt_available() -> bool:
         return False
 
 
+def warmup_stt() -> None:
+    """Загрузить модель и прогнать короткое распознавание заранее."""
+    global _whisper_model
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return
+    if _whisper_model is None:
+        model_size = os.getenv("WHISPER_LOCAL_MODEL", "base")
+        _whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\x00\x00" * 4800)  # 0.3 с тишины
+    buf.seek(0)
+    segments, _ = _whisper_model.transcribe(buf, language="en", beam_size=1)
+    list(segments)
+
+
 def transcribe(audio_bytes: bytes, filename: str = "voice.ogg") -> str | None:
     """Синхронная функция (запускать в executor/to_thread)."""
     text = _stt_openai_compatible(audio_bytes, filename)
