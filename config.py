@@ -27,7 +27,7 @@ OPENAI_MODEL = os.getenv(
 # при установке контейнера; включается строкой OLLAMA_ENABLED=on в .env.
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "").lower() in ("1", "on", "true", "yes")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b-instruct-q4_K_M")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b-instruct-q4_K_M")
 
 # --- Голос: распознавание (STT) и синтез ответов (TTS) ---
 # SPEECH_* — любой OpenAI-совместимый эндпоинт с /audio/transcriptions и /audio/speech
