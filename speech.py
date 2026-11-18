@@ -64,10 +64,12 @@ def _stt_openai_compatible(audio_bytes: bytes, filename: str = "voice.ogg") -> s
         headers={
             "Content-Type": f"multipart/form-data; boundary={boundary}",
             "Authorization": f"Bearer {SPEECH_API_KEY}",
+            # Cloudflare перед Groq блокирует дефолтный UA urllib (error 1010)
+            "User-Agent": os.getenv("LLM_USER_AGENT", "curl/8.5.0"),
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=int(os.getenv("SPEECH_TIMEOUT", "30"))) as resp:
             data = json.loads(resp.read().decode())
         return data.get("text")
     except Exception as exc:  # noqa: BLE001
