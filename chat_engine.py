@@ -89,6 +89,8 @@ class Provider:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}",
+                # Cloudflare перед Groq блокирует дефолтный UA питоновского urllib (error 1010)
+                "User-Agent": os.getenv("LLM_USER_AGENT", "curl/8.5.0"),
             },
         )
         timeout = int(os.getenv("OLLAMA_TIMEOUT" if self.name == "ollama" else "LLM_TIMEOUT", "60"))
