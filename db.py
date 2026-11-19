@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS notify_prefs (
 _LAST_ACTION: dict[int, object] = {}
 
 
+_PROFILE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS user_profile (
+    user_id    INTEGER PRIMARY KEY,
+    cefr       TEXT,
+    goal       TEXT,
+    updated_at TEXT
+);
+"""
+
+
 class Database:
     def __init__(self, path: str = DB_PATH):
         self.path = path
@@ -79,6 +89,7 @@ class Database:
         self._db = await aiosqlite.connect(self.path)
         await self._db.executescript(_SCHEMA)
         await self._db.executescript(_NOTIFY_SCHEMA)
+        await self._db.executescript(_PROFILE_SCHEMA)
         
         # Безопасная миграция: добавляем колонки, если их нет (для старых баз)
         try:
@@ -438,3 +449,27 @@ class Database:
         gap = (now - prev).total_seconds()
         if 0 < gap <= 300:
             await self.add_usage(user_id, "practice_sec", int(gap))
+
+    # ---------------- Профиль: CEFR и цель ----------------
+    async def get_profile(self, user_id: int) -> dict:
+        assert self._db
+        cur = await self._db.execute(
+            "SELECT cefr, goal FROM user_profile WHERE user_id = ?", (user_id,)
+        )
+        row = await cur.fetchone()
+        return {"cefr": row[0], "goal": row[1]} if row else {"cefr": None, "goal": None}
+
+    async def set_profile(self, user_id: int, cefr: str | None = None,
+                          goal: str | None = None) -> None:
+        """Меняет только переданные поля, остальные сохраняет."""
+        assert self._db
+        cur = await self.get_profile(user_id)
+        new_cefr = cefr if cefr is not None else cur["cefr"]
+        new_goal = goal if goal is not None else cur["goal"]
+        await self._db.execute(
+            """INSERT INTO user_profile (user_id, cefr, goal, updated_at) VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 cefr = excluded.cefr, goal = excluded.goal, updated_at = excluded.updated_at""",
+            (user_id, new_cefr, new_goal, _now().isoformat()),
+        )
+        await self._db.commit()
