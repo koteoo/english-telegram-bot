@@ -360,6 +360,33 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
         import dictionary
         hit = dictionary.en_ru_lookup(word)
         if not hit:
+            from chat_engine import word_card
+            card = await word_card(word)
+            if card and card["status"] == "ok":
+                added = await db.add_word_to_deck(
+                    message.from_user.id, card["word"], card["ru"], card["example"]
+                )
+                await db.incr_usage(message.from_user.id, "words")
+                await message.answer(
+                    f"✅ <b>{card['word']}</b>\n💡 <i>{card['ru']}</i>\n"
+                    f"📝 <b>{card['example']}</b>\n"
+                    + ("Добавлено в твою колоду!" if added else "Оно уже в твоей колоде."),
+                    parse_mode="HTML",
+                    reply_markup=main_menu_kb(),
+                )
+                return
+            if card and card["status"] == "fix":
+                await message.answer(
+                    f"✏️ Похоже на опечатку. Правильно: <b>{card['word']}</b> — <i>{card['ru']}</i>\n"
+                    "Добавить исправленный вариант?",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text=f"➕ {card['word']}",
+                                             callback_data=f"addw:{card['word']}")
+                    ]]),
+                )
+                return
+            # модель сказала NO или недоступна — офлайн-подсказки
             sugg = dictionary.suggest_en(word)
             if sugg:
                 rows = [[InlineKeyboardButton(text=f"➕ {x}", callback_data=f"addw:{x}")]
