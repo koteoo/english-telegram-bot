@@ -29,7 +29,10 @@ MAX_WORDS_PER_PING = 3
 ACTIVITY_KINDS = ("words", "quiz", "chat", "review")
 
 
-async def _ping_user(bot: Bot, db: Database, user_id: int) -> None:
+async def _ping_user(bot: Bot, db: Database, user_id: int, local_hour: int) -> None:
+    enabled, hour = await db.get_notify_prefs(user_id)
+    if not enabled or hour != local_hour:
+        return
     # не чаще одного напоминания в сутки (счётчик обнуляется каждый день)
     if await db.get_usage(user_id, "notify") >= 1:
         return
@@ -64,7 +67,7 @@ async def auto_review_loop(bot: Bot, db: Database) -> None:
             if NOTIFY_HOUR_FROM <= hour < NOTIFY_HOUR_TO:
                 users = await db.users_with_due_cards(limit=200)
                 for uid in users:
-                    await _ping_user(bot, db, uid)
+                    await _ping_user(bot, db, uid, hour)
                     await asyncio.sleep(0.5)  # мягкий rate-limit
         except asyncio.CancelledError:
             raise

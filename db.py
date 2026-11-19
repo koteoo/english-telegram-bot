@@ -58,6 +58,15 @@ class CardItem:
     example: str
     box: int
 
+_NOTIFY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS notify_prefs (
+    user_id INTEGER PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    hour    INTEGER NOT NULL DEFAULT 19
+);
+"""
+
+
 class Database:
     def __init__(self, path: str = DB_PATH):
         self.path = path
@@ -66,6 +75,7 @@ class Database:
     async def connect(self) -> None:
         self._db = await aiosqlite.connect(self.path)
         await self._db.executescript(_SCHEMA)
+        await self._db.executescript(_NOTIFY_SCHEMA)
         
         # Безопасная миграция: добавляем колонки, если их нет (для старых баз)
         try:
@@ -325,3 +335,23 @@ class Database:
             (_now().isoformat(), limit),
         )
         return [r[0] for r in await cur.fetchall()]
+
+    # ---------------- Напоминания ----------------
+    async def get_notify_prefs(self, user_id: int) -> tuple[bool, int]:
+        """(включены, час местного времени). По умолчанию включены в 19:00."""
+        assert self._db
+        cur = await self._db.execute(
+            "SELECT enabled, hour FROM notify_prefs WHERE user_id = ?", (user_id,)
+        )
+        row = await cur.fetchone()
+        return (bool(row[0]), int(row[1])) if row else (True, 19)
+
+    async def set_notify_prefs(self, user_id: int, enabled: bool, hour: int) -> None:
+        assert self._db
+        await self._db.execute(
+            """INSERT INTO notify_prefs (user_id, enabled, hour) VALUES (?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 enabled = excluded.enabled, hour = excluded.hour""",
+            (user_id, int(enabled), int(hour)),
+        )
+        await self._db.commit()
