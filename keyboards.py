@@ -184,6 +184,7 @@ def level_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=LEVEL_NAMES["beginner"], callback_data="lvl:beginner"),
          InlineKeyboardButton(text=LEVEL_NAMES["intermediate"], callback_data="lvl:intermediate")],
         [InlineKeyboardButton(text=LEVEL_NAMES["advanced"], callback_data="lvl:advanced")],
+        [InlineKeyboardButton(text="🎯 Цель обучения", callback_data="goal:menu")],
     ])
 
 
@@ -191,4 +192,13 @@ def placement_kb(opts: list[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=o, callback_data=f"plca:{i}")]
         for i, o in enumerate(opts)
+    ])
+
+
+def goals_kb(current: str | None) -> InlineKeyboardMarkup:
+    from placement import GOALS
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=("✅ " if k == current else "") + v,
+                              callback_data=f"goal:{k}")]
+        for k, v in GOALS.items()
     ])

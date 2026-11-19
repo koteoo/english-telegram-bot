@@ -61,3 +61,12 @@ def score(answers: list[tuple[str, bool]]) -> str:
         else:
             break
     return reached
+
+
+GOALS = {
+    "travel": "✈️ Путешествия",
+    "work": "💼 Работа и карьера",
+    "exam": "🎓 Экзамен (IELTS/TOEFL)",
+    "daily": "💬 Повседневное общение",
+    "relocation": "🏡 Переезд",
+}

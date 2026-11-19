@@ -473,3 +473,25 @@ class Database:
             (user_id, new_cefr, new_goal, _now().isoformat()),
         )
         await self._db.commit()
+
+    async def export_user(self, user_id: int) -> dict:
+        """Полная выгрузка прогресса в переносимый вид (не зависит от схемы бота)."""
+        assert self._db
+        out = {"user_id": user_id, "exported_at": _now().isoformat()}
+        cur = await self._db.execute("SELECT level FROM users WHERE user_id = ?", (user_id,))
+        row = await cur.fetchone()
+        out["level"] = row[0] if row else None
+        out["profile"] = await self.get_profile(user_id)
+        out["stats"] = await self.get_stats(user_id)
+        cur = await self._db.execute(
+            "SELECT word, box, next_review, translation, example FROM cards "
+            "WHERE user_id = ? ORDER BY word", (user_id,)
+        )
+        cols = ("word", "box", "next_review", "translation", "example")
+        out["cards"] = [dict(zip(cols, r)) for r in await cur.fetchall()]
+        cur = await self._db.execute(
+            "SELECT day, kind, used FROM usage_counters WHERE user_id = ? ORDER BY day, kind",
+            (user_id,)
+        )
+        out["activity"] = [dict(zip(("day", "kind", "used"), r)) for r in await cur.fetchall()]
+        return out

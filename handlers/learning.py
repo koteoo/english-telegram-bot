@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb, goals_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -671,3 +671,46 @@ async def placement_answer(call: CallbackQuery, state: FSMContext, db: Database)
 async def placement_cancel(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Тест прерван. Уровень не изменён.", reply_markup=main_menu_kb())
+
+
+@router.callback_query(F.data == "goal:menu")
+async def goal_menu(call: CallbackQuery, db: Database) -> None:
+    prof = await db.get_profile(call.from_user.id)
+    await call.answer()
+    await call.message.answer(
+        "Зачем вам английский? Подберу темы и лексику под цель.",
+        reply_markup=goals_kb(prof["goal"]),
+    )
+
+
+@router.callback_query(F.data.startswith("goal:"))
+async def goal_set(call: CallbackQuery, db: Database) -> None:
+    from placement import GOALS
+    key = call.data.split(":", 1)[1]
+    if key not in GOALS:
+        await call.answer()
+        return
+    await db.set_profile(call.from_user.id, goal=key)
+    await call.answer("Цель сохранена")
+    await call.message.edit_text(
+        f"🎯 Цель: <b>{GOALS[key]}</b>\nТемы и лексика будут подбираться под неё.",
+        parse_mode="HTML",
+        reply_markup=goals_kb(key),
+    )
+
+
+@router.message(Command("export"))
+async def export_progress(message: Message, db: Database) -> None:
+    """Выгрузка прогресса в JSON — на случай переезда или переделки проекта."""
+    import json
+    from aiogram.types import BufferedInputFile
+    data = await db.export_user(message.from_user.id)
+    payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    await message.answer_document(
+        BufferedInputFile(payload, filename=f"english-progress-{message.from_user.id}.json"),
+        caption=(
+            f"📦 Ваш прогресс: {len(data['cards'])} слов, "
+            f"{len(data['activity'])} записей активности.\n"
+            "Формат JSON — читается любым языком и не зависит от бота."
+        ),
+    )
