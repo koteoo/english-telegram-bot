@@ -21,7 +21,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             # [KeyboardButton(text="💬 Topics"), KeyboardButton(text="🗣 Chat with me")],
             [KeyboardButton(text="🗣 Chat with me")],
             [KeyboardButton(text="💎 Premium"), KeyboardButton(text="❓ Help")],
-            [KeyboardButton(text="🔄 Translate")],
+            [KeyboardButton(text="🔄 Translate"), KeyboardButton(text="🔔 Напоминания")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Choose an action…",
@@ -159,3 +159,18 @@ def add_word_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         input_field_placeholder="Отправь английское слово или фразу…",
     )
+
+
+def notify_kb(enabled: bool, hour: int) -> InlineKeyboardMarkup:
+    """Выбор часа напоминания и переключатель. Часы внутри дневного окна."""
+    hours = [9, 12, 15, 18, 20]
+    rows = [[InlineKeyboardButton(
+        text=("✅ " if h == hour else "") + f"{h}:00",
+        callback_data=f"notify:h{h}",
+    ) for h in hours]]
+    rows.append([InlineKeyboardButton(
+        text="🔕 Выключить" if enabled else "🔔 Включить",
+        callback_data="notify:toggle",
+    )])
+    rows.append([InlineKeyboardButton(text="✖️ Закрыть", callback_data="notify:close")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

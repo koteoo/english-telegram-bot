@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -516,3 +516,50 @@ async def add_suggested_word(cb: CallbackQuery, db: Database) -> None:
         parse_mode="HTML",
         reply_markup=main_menu_kb(),
     )
+
+
+def _notify_text(enabled: bool, hour: int) -> str:
+    state = f"включены, в {hour:02d}:00" if enabled else "выключены"
+    return (
+        "🔔 <b>Напоминания о повторении</b>\n"
+        f"Сейчас: {state} (время МСК).\n\n"
+        "Напомню не чаще раза в день и только если есть слова к повторению. "
+        "Если вы уже позанимались — не потревожу."
+    )
+
+
+@router.message(F.text == "🔔 Напоминания")
+async def notify_settings(message: Message, db: Database) -> None:
+    enabled, hour = await db.get_notify_prefs(message.from_user.id)
+    await message.answer(
+        _notify_text(enabled, hour), parse_mode="HTML",
+        reply_markup=notify_kb(enabled, hour),
+    )
+
+
+@router.callback_query(F.data.startswith("notify:"))
+async def notify_change(call: CallbackQuery, db: Database) -> None:
+    from aiogram.exceptions import TelegramBadRequest
+    enabled, hour = await db.get_notify_prefs(call.from_user.id)
+    action = call.data.split(":", 1)[1]
+    if action == "close":
+        await call.answer()
+        try:
+            await call.message.edit_text("Настройки напоминаний сохранены.", reply_markup=None)
+        except TelegramBadRequest:
+            pass
+        return
+    if action == "toggle":
+        enabled = not enabled
+    elif action.startswith("h") and action[1:].isdigit():
+        hour = int(action[1:])
+        enabled = True
+    await db.set_notify_prefs(call.from_user.id, enabled, hour)
+    await call.answer("Сохранено")
+    try:
+        await call.message.edit_text(
+            _notify_text(enabled, hour), parse_mode="HTML",
+            reply_markup=notify_kb(enabled, hour),
+        )
+    except TelegramBadRequest:
+        pass  # сообщение не изменилось — это нормально
