@@ -125,9 +125,15 @@ def _parse_ruedict(raw: str) -> dict[str, str]:
     return pairs
 
 
+_FULL_INDEX_DONE = False
+
+
 def _load_ruedict_sync() -> bool:
-    load_full_en_ru_index()
-    global _ruen_ru_en, _ruen_en_ru, _ruen_loaded
+    global _ruen_ru_en, _ruen_en_ru, _ruen_loaded, _FULL_INDEX_DONE
+    # индекс Мюллера строится один раз: раньше он пересобирался на каждый запрос (~3.3 с)
+    if not _FULL_INDEX_DONE:
+        load_full_en_ru_index()
+        _FULL_INDEX_DONE = True
     if _ruen_loaded:
         return bool(_ruen_ru_en)
     path = RUEDICT_PATH
@@ -879,6 +885,53 @@ def _mueller_ru(en: str) -> list[str]:
             continue
         out.append(" ".join(dict.fromkeys(words)))
     return list(dict.fromkeys(out))
+
+
+_SUG_TRI: dict[str, list[str]] = {}
+
+
+def _build_suggest_index() -> None:
+    """Триграммный индекс по обоим словарям — чтобы подсказки были мгновенными."""
+    if _SUG_TRI:
+        return
+    for k in set(_ruen_en_ru) | set(_en_ru):
+        if len(k) < 3 or not k.isalpha():
+            continue
+        padded = "  " + k + " "
+        for i in range(len(padded) - 2):
+            _SUG_TRI.setdefault(padded[i:i + 3], []).append(k)
+
+
+def suggest_en(word: str, n: int = 3, cutoff: float = 0.82) -> list[str]:
+    """Похожие английские слова — подсказка при опечатке. Пустой список для мусора."""
+    _load_ruedict_sync()
+    w = word.lower().strip().strip(".!,;:? ")
+    if len(w) < 3 or " " in w or w in _ruen_en_ru or w in _en_ru:
+        return []
+    _build_suggest_index()
+    import difflib
+    from collections import Counter
+    padded = "  " + w + " "
+    grams = [padded[i:i + 3] for i in range(len(padded) - 2)]
+    cnt: Counter = Counter()
+    for g in grams:
+        for k in _SUG_TRI.get(g, ()):
+            cnt[k] += 1
+    if not cnt:
+        return []
+    need = max(2, len(grams) // 3)
+    pool = [k for k, c in cnt.most_common(300) if c >= need]
+    scored = []
+    for k in pool:
+        r = difflib.SequenceMatcher(None, w, k).ratio()
+        if r >= cutoff:
+            scored.append((-r, k))
+    scored.sort()
+    # перестановка соседних букв — частая опечатка: wrold -> world, teh -> the
+    swaps = {w[:i] + w[i + 1] + w[i] + w[i + 2:] for i in range(len(w) - 1)}
+    hits = [x for x in sorted(swaps) if x in _ruen_en_ru or x in _en_ru]
+    rest = [k for _, k in scored if k not in hits]
+    return (hits + rest)[:n]
 
 
 def en_ru_lookup(word: str) -> tuple[str, str] | None:
