@@ -462,17 +462,24 @@ async def add_suggested_word(cb: CallbackQuery, db: Database) -> None:
     import dictionary
     word = cb.data.split(":", 1)[1].strip().lower()
     hit = dictionary.en_ru_lookup(word)
-    if not hit:
-        await cb.answer("Перевод не найден", show_alert=True)
-        return
+    if hit:
+        ru, example = hit[0], ""
+    else:
+        from chat_engine import word_card
+        card = await word_card(word)
+        if not card or card["status"] != "ok":
+            await cb.answer("Перевод не найден", show_alert=True)
+            return
+        ru, example = card["ru"], card["example"]
     if not await db.within_limit(cb.from_user.id, "words", LIMITS.free_words_per_day):
         await cb.answer("Лимит слов на сегодня исчерпан", show_alert=True)
         return
-    added = await db.add_word_to_deck(cb.from_user.id, word, hit[0], "")
+    added = await db.add_word_to_deck(cb.from_user.id, word, ru, example)
     await db.incr_usage(cb.from_user.id, "words")
     await cb.answer("Добавлено" if added else "Уже в колоде")
     await cb.message.answer(
-        f"✅ <b>{word}</b>\n💡 <i>{hit[0]}</i>\n"
+        f"✅ <b>{word}</b>\n💡 <i>{ru}</i>\n"
+        + (f"📝 <b>{example}</b>\n" if example else "")
         + ("Добавлено в твою колоду!" if added else "Оно уже в твоей колоде."),
         parse_mode="HTML",
         reply_markup=main_menu_kb(),
