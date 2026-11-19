@@ -14,7 +14,10 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📚 Word of the Day"), KeyboardButton(text="🃏 Flashcards")],
             [KeyboardButton(text="✍️ Quiz"), KeyboardButton(text="➕ Add word")],
             [KeyboardButton(text="📊 Progress"), KeyboardButton(text="🎯 Level")],
-            [KeyboardButton(text="💬 Topics"), KeyboardButton(text="🗣 Chat with me")],
+            # 💬 Topics временно скрыт: дублировал выбор тем внутри «Chat with me».
+            # Вернуть строку ниже, когда у раздела появится своё содержание.
+            # [KeyboardButton(text="💬 Topics"), KeyboardButton(text="🗣 Chat with me")],
+            [KeyboardButton(text="🗣 Chat with me")],
             [KeyboardButton(text="💎 Premium"), KeyboardButton(text="❓ Help")],
             [KeyboardButton(text="🔄 Translate")],
         ],
