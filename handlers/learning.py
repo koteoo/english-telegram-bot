@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -21,6 +21,7 @@ class QuizState(StatesGroup):
 
 
 class FlashcardsState(StatesGroup):
+    add_word = State()
     in_review = State()
 
 # Текущая серия верных ответов квиза (в памяти; рекорд хранится в БД)
@@ -133,6 +134,34 @@ async def flashcards(message: Message, db: Database, state: FSMContext) -> None:
     )
     if not await _send_card(message, db, message.from_user.id):
         await state.clear()
+
+
+@router.message(FlashcardsState.in_review, F.text == "➕ Add word")
+async def cards_add_word_start(message: Message, state: FSMContext) -> None:
+    await state.set_state(FlashcardsState.add_word)
+    await message.answer(
+        "Отправь английское слово или фразу — добавлю в колоду.\n"
+        "Например: <b>journey</b>, <b>take off</b>",
+        parse_mode="HTML",
+        reply_markup=add_word_kb(),
+    )
+
+
+@router.message(FlashcardsState.add_word, F.text.in_({"⬅️ Back to cards", "🏠 Main menu"}))
+async def cards_add_word_nav(message: Message, db: Database, state: FSMContext) -> None:
+    if "Main menu" in (message.text or ""):
+        await state.clear()
+        await message.answer("✅ Режим карточек завершён.", reply_markup=main_menu_kb())
+    else:
+        await flashcards(message, db, state)
+
+
+@router.message(FlashcardsState.add_word, ~F.text.regexp(r"^[A-Za-z][A-Za-z '\-]{1,30}$"))
+async def cards_add_word_hint(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        "Жду английское слово латиницей. Выход — ⬅️ Back to cards.",
+        reply_markup=add_word_kb(),
+    )
 
 
 @router.message(Command("cancel"), FlashcardsState.in_review)
@@ -330,12 +359,14 @@ async def add_word_hint(message: Message) -> None:
 @router.message(F.text.regexp(r"^[A-Za-z][A-Za-z '\-]{1,30}$"))
 async def add_user_word(message: Message, db: Database, state: FSMContext) -> None:
     # в режиме разговора обычные сообщения обрабатывает chat-хендлер
-    if await state.get_state():
+    st = await state.get_state()
+    if st and st != FlashcardsState.add_word.state:
         return
+    kb = add_word_kb() if st == FlashcardsState.add_word.state else main_menu_kb()
     if not await db.within_limit(message.from_user.id, "words", LIMITS.free_words_per_day):
         await message.answer(
             UPGRADE_HINTS["words"].format(limit=LIMITS.free_words_per_day),
-            reply_markup=main_menu_kb(),
+            reply_markup=kb,
         )
         return
     word = message.text.strip().lower()
@@ -354,7 +385,7 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
             f"✅ Слово <b>{w}</b> уже в моей базе!\n💡 <i>{t}</i>\n📝 <b>{e}</b>"
             + ("\nДобавлено в твою колоду!" if added else "\nОно уже в твоей колоде."),
             parse_mode="HTML",
-            reply_markup=main_menu_kb(),
+            reply_markup=kb,
         )
     else:
         import dictionary
@@ -372,7 +403,7 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
                     f"📝 <b>{card['example']}</b>\n"
                     + ("Добавлено в твою колоду!" if added else "Оно уже в твоей колоде."),
                     parse_mode="HTML",
-                    reply_markup=main_menu_kb(),
+                    reply_markup=kb,
                 )
                 return
             if card and card["status"] == "fix":
@@ -400,7 +431,7 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
                 await message.answer(
                     f"❌ Не нашёл перевод для «{word}» — проверьте написание.\n"
                     "В колоду не добавляю: слово без перевода учить нечем.",
-                    reply_markup=main_menu_kb(),
+                    reply_markup=kb,
                 )
             return
         translation = hit[0]
@@ -411,7 +442,7 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
                 f"✅ Добавил «{word}» в твою колоду!\n💡 <i>{translation}</i>\n"
                 "Завтра попрошу повторить 😉",
                 parse_mode="HTML",
-                reply_markup=main_menu_kb(),
+                reply_markup=kb,
             )
         else:
             await message.answer("Это слово уже в твоей колоде 👍")

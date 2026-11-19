@@ -12,7 +12,9 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📚 Word of the Day"), KeyboardButton(text="🃏 Flashcards")],
-            [KeyboardButton(text="✍️ Quiz"), KeyboardButton(text="➕ Add word")],
+            # ➕ Add word перенесён внутрь Flashcards — там он по смыслу.
+            # [KeyboardButton(text="✍️ Quiz"), KeyboardButton(text="➕ Add word")],
+            [KeyboardButton(text="✍️ Quiz")],
             [KeyboardButton(text="📊 Progress"), KeyboardButton(text="🎯 Level")],
             # 💬 Topics временно скрыт: дублировал выбор тем внутри «Chat with me».
             # Вернуть строку ниже, когда у раздела появится своё содержание.
@@ -136,11 +138,24 @@ def quiz_menu_kb() -> ReplyKeyboardMarkup:
 
 
 def flashcards_menu_kb() -> ReplyKeyboardMarkup:
-    """Клавиатура для режима карточек (только кнопка выхода)."""
+    """Клавиатура режима карточек: добавление слова и выход."""
     keyboard = [
+        [KeyboardButton(text="➕ Add word")],
         [KeyboardButton(text="🏠 Main menu")],
     ]
     return ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True,
         input_field_placeholder="Вспомните перевод и нажмите кнопку…",
+    )
+
+
+def add_word_kb() -> ReplyKeyboardMarkup:
+    """Клавиатура ввода слова внутри режима карточек."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="⬅️ Back to cards")],
+            [KeyboardButton(text="🏠 Main menu")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Отправь английское слово или фразу…",
     )
