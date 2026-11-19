@@ -54,6 +54,29 @@ class Provider:
         logger.warning("Provider %s: кулдаун %.0f сек (%.0f мин)",
                        self.name, seconds, seconds / 60)
 
+    def ask(self, system: str, user: str, max_tokens: int = 200) -> str:
+        """Низкоуровневый запрос со своим промптом — без тьюторских инструкций."""
+        payload = json.dumps({
+            "model": self.model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+        })
+        req = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=payload.encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "User-Agent": os.getenv("LLM_USER_AGENT", "curl/8.5.0"),
+            },
+        )
+        timeout = int(os.getenv("LLM_TIMEOUT", "60"))
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode())
+            return data["choices"][0]["message"]["content"].strip()
+
     def reply(self, history: list[dict], topic_id: str | None, level: str) -> str:
         topic_name = TOPIC_BY_ID[topic_id]["title"] if topic_id in TOPIC_BY_ID else "free conversation"
         system = (
@@ -277,3 +300,48 @@ async def chat_reply(history: list[dict], topic_id: str | None, level: str) -> s
     except Exception as exc:
         logger.warning("LLM chain failed: %s", exc)
         return None
+
+
+_WORD_SYSTEM = (
+    "You are an English-Russian dictionary validator. The user sends one English word "
+    "or a short phrase. Answer with EXACTLY one line and nothing else:\n"
+    "NO - if it is not a real English word or phrase (random letters, gibberish).\n"
+    "FIX|correct_spelling|russian_translation|short english example - if it is misspelled.\n"
+    "OK|russian_translation|short english example - if the spelling is correct.\n"
+    "Rules: russian_translation is at most 6 words; example is one short sentence "
+    "using the word; adverbs must be translated as adverbs (beautifully -> красиво)."
+)
+
+
+async def word_card(word: str) -> dict | None:
+    """Проверка слова/фразы моделью. None — цепочка недоступна."""
+    import asyncio
+
+    def _call() -> dict | None:
+        for p in _providers:
+            if not p.available():
+                continue
+            try:
+                raw = p.ask(_WORD_SYSTEM, word)
+                logger.info("word_card %r: сырой ответ %r", word, raw[:160])
+            except Exception as exc:
+                p.cooldown(COOLDOWN_SEC if _is_limit_error(exc) else 60)
+                logger.warning("word_card %s: %s", p.name, exc)
+                continue
+            line = raw.strip().splitlines()[0].strip() if raw.strip() else ""
+            parts = [x.strip() for x in line.split("|")]
+            tag = parts[0].upper() if parts else ""
+            if tag == "NO":
+                return {"status": "no"}
+            if tag == "FIX" and len(parts) >= 4:
+                return {"status": "fix", "word": parts[1].lower(), "ru": parts[2], "example": parts[3]}
+            if tag == "OK" and len(parts) >= 3:
+                return {"status": "ok", "word": word, "ru": parts[1], "example": parts[2]}
+            logger.warning("word_card: неожиданный ответ %r", raw[:120])
+            return None
+        return None
+
+    if not llm_available():
+        logger.info("word_card %r: LLM недоступен", word)
+        return None
+    return await asyncio.to_thread(_call)
