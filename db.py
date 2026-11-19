@@ -67,6 +67,9 @@ CREATE TABLE IF NOT EXISTS notify_prefs (
 """
 
 
+_LAST_ACTION: dict[int, object] = {}
+
+
 class Database:
     def __init__(self, path: str = DB_PATH):
         self.path = path
@@ -293,6 +296,7 @@ class Database:
     # ---------------- Дневные счётчики (лимиты) ----------------
     async def incr_usage(self, user_id: int, kind: str) -> int:
         assert self._db
+        await self._touch_practice(user_id, kind)
         day = _now().strftime("%Y-%m-%d")
         await self._db.execute(
             """INSERT INTO usage_counters (user_id, kind, day, used) VALUES (?, ?, ?, 1)
@@ -394,5 +398,43 @@ class Database:
             run = run + 1 if prev and (dd - prev).days == 1 else 1
             best = max(best, run)
             prev = dd
+        cur = await self._db.execute(
+            "SELECT COALESCE(SUM(used), 0) FROM usage_counters "
+            "WHERE user_id = ? AND kind = 'practice_sec'", (user_id,)
+        )
+        seconds = int((await cur.fetchone())[0])
+        cur = await self._db.execute(
+            """SELECT kind, SUM(used) AS n FROM usage_counters
+               WHERE user_id = ? AND kind LIKE 'topic:%'
+               GROUP BY kind ORDER BY n DESC LIMIT 3""", (user_id,)
+        )
+        topic_rows = [(r[0].split(":", 1)[1], int(r[1])) for r in await cur.fetchall()]
         return {"boxes": boxes, "due": due, "days": len(days),
-                "streak": streak, "best_streak": best, "actions": actions}
+                "streak": streak, "best_streak": best, "actions": actions,
+                "seconds": seconds, "topics": topic_rows}
+
+    async def add_usage(self, user_id: int, kind: str, amount: int) -> None:
+        """Прибавить произвольное значение к дневному счётчику."""
+        assert self._db
+        if amount <= 0:
+            return
+        day = _now().strftime("%Y-%m-%d")
+        await self._db.execute(
+            """INSERT INTO usage_counters (user_id, kind, day, used) VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, kind, day) DO UPDATE SET used = used + ?""",
+            (user_id, kind, day, amount, amount),
+        )
+        await self._db.commit()
+
+    async def _touch_practice(self, user_id: int, kind: str) -> None:
+        """Оценка времени практики: складываем интервалы между близкими действиями."""
+        if kind not in ("words", "quiz", "chat", "review"):
+            return
+        now = _now()
+        prev = _LAST_ACTION.get(user_id)
+        _LAST_ACTION[user_id] = now
+        if prev is None:
+            return
+        gap = (now - prev).total_seconds()
+        if 0 < gap <= 300:
+            await self.add_usage(user_id, "practice_sec", int(gap))
