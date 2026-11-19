@@ -5,7 +5,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
@@ -360,11 +360,21 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
         import dictionary
         hit = dictionary.en_ru_lookup(word)
         if not hit:
-            await message.answer(
-                f"❌ Не нашёл перевод для «{word}» — проверьте написание.\n"
-                "В колоду не добавляю: слово без перевода учить нечем.",
-                reply_markup=main_menu_kb(),
-            )
+            sugg = dictionary.suggest_en(word)
+            if sugg:
+                rows = [[InlineKeyboardButton(text=f"➕ {x}", callback_data=f"addw:{x}")]
+                        for x in sugg]
+                await message.answer(
+                    f"❌ Слова «{word}» в словаре нет — в колоду его не добавляю.\n"
+                    "Возможно, вы имели в виду:",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                )
+            else:
+                await message.answer(
+                    f"❌ Не нашёл перевод для «{word}» — проверьте написание.\n"
+                    "В колоду не добавляю: слово без перевода учить нечем.",
+                    reply_markup=main_menu_kb(),
+                )
             return
         translation = hit[0]
         added = await db.add_word_to_deck(message.from_user.id, word, translation, "")
@@ -417,3 +427,26 @@ async def set_level(call: CallbackQuery, db: Database) -> None:
     await db.set_level(call.from_user.id, level)
     await call.message.edit_text(f"🎯 Теперь твой уровень: {LEVEL_NAMES[level]}")
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("addw:"))
+async def add_suggested_word(cb: CallbackQuery, db: Database) -> None:
+    """Добавление слова из подсказки — в колоду идёт проверенный вариант."""
+    import dictionary
+    word = cb.data.split(":", 1)[1].strip().lower()
+    hit = dictionary.en_ru_lookup(word)
+    if not hit:
+        await cb.answer("Перевод не найден", show_alert=True)
+        return
+    if not await db.within_limit(cb.from_user.id, "words", LIMITS.free_words_per_day):
+        await cb.answer("Лимит слов на сегодня исчерпан", show_alert=True)
+        return
+    added = await db.add_word_to_deck(cb.from_user.id, word, hit[0], "")
+    await db.incr_usage(cb.from_user.id, "words")
+    await cb.answer("Добавлено" if added else "Уже в колоде")
+    await cb.message.answer(
+        f"✅ <b>{word}</b>\n💡 <i>{hit[0]}</i>\n"
+        + ("Добавлено в твою колоду!" if added else "Оно уже в твоей колоде."),
+        parse_mode="HTML",
+        reply_markup=main_menu_kb(),
+    )
