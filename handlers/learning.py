@@ -462,12 +462,27 @@ async def progress(message: Message, db: Database) -> None:
             f"\n⏳ Лимиты сегодня: слов {words_used}/{LIMITS.free_words_per_day}, "
             f"квиз {quiz_used}/{LIMITS.free_quizzes_per_day}"
         )
+    from config import REPETITION_INTERVALS_DAYS
+    pr = await db.get_progress(message.from_user.id)
+    # освоено — дошло до коробки с интервалом от 14 дней
+    mastered_box = next((i for i, d in enumerate(REPETITION_INTERVALS_DAYS) if d >= 14),
+                        len(REPETITION_INTERVALS_DAYS) - 1)
+    boxes = pr["boxes"]
+    mastered = sum(n for b, n in boxes.items() if b >= mastered_box)
+    fresh = boxes.get(0, 0)
+    working = sum(boxes.values()) - mastered - fresh
+    fire = "🔥" if pr["streak"] >= 3 else "📅"
     await message.answer(
         f"📊 <b>Твой прогресс</b>\n\n"
         f"🎫 План: {PLAN_NAMES[tier]}\n"
-        f"🎯 Уровень: {LEVEL_NAMES[level]}\n"
-        f"🧠 Выучено слов: {stats['learned']}\n"
-        f"🃏 В колоде на повторение: {stats['deck_size']}\n"
+        f"🎯 Уровень: {LEVEL_NAMES[level]}\n\n"
+        f"{fire} Серия: <b>{pr['streak']}</b> дн. (лучшая {pr['best_streak']})\n"
+        f"🗓 Дней занятий: {pr['days']} · действий: {pr['actions']}\n\n"
+        f"🃏 Колода: <b>{stats['deck_size']}</b> слов\n"
+        f"   ✅ освоено: {mastered}\n"
+        f"   📖 в работе: {working}\n"
+        f"   🆕 новые: {fresh}\n"
+        f"⏰ К повторению сейчас: {pr['due']}\n"
         f"🏆 Рекорд в квизе: {stats['quiz_best']}/10"
         + limits_line,
         parse_mode="HTML",

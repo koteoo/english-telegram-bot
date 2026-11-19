@@ -355,3 +355,44 @@ class Database:
             (user_id, int(enabled), int(hour)),
         )
         await self._db.commit()
+
+    async def get_progress(self, user_id: int) -> dict:
+        """Коробки колоды, срок повторения, серия дней и число действий."""
+        from datetime import date, timedelta
+        assert self._db
+        cur = await self._db.execute(
+            "SELECT box, COUNT(*) FROM cards WHERE user_id = ? GROUP BY box", (user_id,)
+        )
+        boxes = {int(b): int(n) for b, n in await cur.fetchall()}
+        cur = await self._db.execute(
+            "SELECT COUNT(*) FROM cards WHERE user_id = ? AND next_review <= ?",
+            (user_id, _now().isoformat()),
+        )
+        due = int((await cur.fetchone())[0])
+        kinds = ('words', 'quiz', 'chat', 'review')
+        cur = await self._db.execute(
+            """SELECT DISTINCT day FROM usage_counters
+               WHERE user_id = ? AND kind IN ('words','quiz','chat','review')
+               ORDER BY day DESC""", (user_id,)
+        )
+        days = {r[0] for r in await cur.fetchall()}
+        cur = await self._db.execute(
+            """SELECT COALESCE(SUM(used), 0) FROM usage_counters
+               WHERE user_id = ? AND kind IN ('words','quiz','chat','review')""", (user_id,)
+        )
+        actions = int((await cur.fetchone())[0])
+        today = _now().date()
+        d = today if today.isoformat() in days else today - timedelta(days=1)
+        streak = 0
+        while d.isoformat() in days:
+            streak += 1
+            d -= timedelta(days=1)
+        best = run = 0
+        prev = None
+        for day in sorted(days):
+            dd = date.fromisoformat(day)
+            run = run + 1 if prev and (dd - prev).days == 1 else 1
+            best = max(best, run)
+            prev = dd
+        return {"boxes": boxes, "due": due, "days": len(days),
+                "streak": streak, "best_streak": best, "actions": actions}
