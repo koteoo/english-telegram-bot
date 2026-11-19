@@ -134,6 +134,8 @@ async def _respond(message: Message, state: FSMContext, db: Database, user_text:
     history.append({"role": "user", "content": user_text})
     level = await db.get_level(message.from_user.id)
 
+    if topic_id:
+        await db.incr_usage(message.from_user.id, f"topic:{topic_id}")
     answer = await chat_reply(history, topic_id, level)
     if answer:
         history.append({"role": "assistant", "content": answer})

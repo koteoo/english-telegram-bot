@@ -449,6 +449,18 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
             await message.answer("Это слово уже в твоей колоде 👍")
 
 
+def _topics_line(rows) -> str:
+    if not rows:
+        return ""
+    import topics as T
+    parts = []
+    for tid, n in rows:
+        t = T.get_topic(tid)
+        name = t["title"].split(" ", 1)[-1] if t else tid
+        parts.append(f"{name} — {n}")
+    return "💬 Темы: " + ", ".join(parts) + "\n"
+
+
 @router.message(F.text == "📊 Progress")
 async def progress(message: Message, db: Database) -> None:
     stats = await db.get_stats(message.from_user.id)
@@ -477,7 +489,9 @@ async def progress(message: Message, db: Database) -> None:
         f"🎫 План: {PLAN_NAMES[tier]}\n"
         f"🎯 Уровень: {LEVEL_NAMES[level]}\n\n"
         f"{fire} Серия: <b>{pr['streak']}</b> дн. (лучшая {pr['best_streak']})\n"
-        f"🗓 Дней занятий: {pr['days']} · действий: {pr['actions']}\n\n"
+        f"🗓 Дней занятий: {pr['days']} · действий: {pr['actions']}\n"
+        + (f"⏱ Время практики: ≈ {pr['seconds'] // 60} мин\n" if pr["seconds"] >= 60 else "")
+        + _topics_line(pr["topics"]) + "\n"
         f"🃏 Колода: <b>{stats['deck_size']}</b> слов\n"
         f"   ✅ освоено: {mastered}\n"
         f"   📖 в работе: {working}\n"
