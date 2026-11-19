@@ -17,3 +17,4 @@ __pycache__/
 *$py.class
 .DS_Store
 ru_multi_cache.pkl
+backups/
