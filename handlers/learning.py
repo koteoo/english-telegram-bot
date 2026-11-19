@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -506,7 +506,19 @@ async def progress(message: Message, db: Database) -> None:
 
 @router.message(F.text == "🎯 Level")
 async def choose_level(message: Message, db: Database) -> None:
-    await message.answer("Выбери уровень:", reply_markup=levels_kb())
+    import placement
+    prof = await db.get_profile(message.from_user.id)
+    level = await db.get_level(message.from_user.id)
+    cefr = prof["cefr"] or "не определён"
+    await message.answer(
+        f"🎯 <b>Уровень</b>\n\n"
+        f"CEFR: <b>{cefr}</b>\n"
+        f"Рабочий уровень: {LEVEL_NAMES[level]}\n\n"
+        "Пройдите тест — он поднимается по ступеням A1–C2 и останавливается "
+        "там, где начинаются ошибки. Или выберите уровень вручную.",
+        parse_mode="HTML",
+        reply_markup=level_menu_kb(),
+    )
 
 
 @router.callback_query(F.data.startswith("lvl:"))
@@ -592,3 +604,70 @@ async def notify_change(call: CallbackQuery, db: Database) -> None:
         )
     except TelegramBadRequest:
         pass  # сообщение не изменилось — это нормально
+
+
+class PlacementState(StatesGroup):
+    in_test = State()
+
+
+async def _send_question(msg: Message, state: FSMContext, db: Database, uid: int) -> None:
+    import placement
+    data = await state.get_data()
+    ids, pos, seed = data["ids"], data["pos"], data["seed"]
+    if pos >= len(ids):
+        answers = [(l, bool(ok)) for l, ok in data["answers"]]
+        cefr = placement.score(answers)
+        internal = placement.TO_INTERNAL[cefr]
+        await db.set_profile(uid, cefr=cefr)
+        await db.set_level(uid, internal)
+        correct = sum(1 for _, ok in answers if ok)
+        await state.clear()
+        await msg.answer(
+            f"🎓 <b>Ваш уровень: {cefr}</b>\n"
+            f"Верных ответов: {correct} из {len(answers)}\n"
+            f"Рабочий уровень бота: {LEVEL_NAMES[internal]}\n\n"
+            "Слова и карточки подобраны под него. Пройти тест заново — 🎯 Level.",
+            parse_mode="HTML",
+            reply_markup=main_menu_kb(),
+        )
+        return
+    q_index = ids[pos]
+    _level, text, _opts, _c = placement.QUESTIONS[q_index]
+    opts, correct_idx = placement.options_shuffled(q_index, seed)
+    await state.update_data(correct=correct_idx)
+    await msg.answer(
+        f"Вопрос <b>{pos + 1}/{len(ids)}</b>\n\n{text}",
+        parse_mode="HTML",
+        reply_markup=placement_kb(opts),
+    )
+
+
+@router.callback_query(F.data.startswith("plc:"))
+async def placement_start(call: CallbackQuery, state: FSMContext, db: Database) -> None:
+    import random
+    import placement
+    mode = call.data.split(":", 1)[1]
+    ids = placement.QUICK if mode == "quick" else placement.FULL
+    await state.set_state(PlacementState.in_test)
+    await state.update_data(ids=list(ids), pos=0, answers=[], seed=random.randint(1, 10**6))
+    await call.answer()
+    await _send_question(call.message, state, db, call.from_user.id)
+
+
+@router.callback_query(PlacementState.in_test, F.data.startswith("plca:"))
+async def placement_answer(call: CallbackQuery, state: FSMContext, db: Database) -> None:
+    import placement
+    data = await state.get_data()
+    ids, pos = data["ids"], data["pos"]
+    level = placement.QUESTIONS[ids[pos]][0]
+    ok = int(call.data.split(":", 1)[1]) == int(data.get("correct", -1))
+    answers = list(data["answers"]) + [[level, ok]]
+    await state.update_data(answers=answers, pos=pos + 1)
+    await call.answer("Верно ✅" if ok else "Неверно ❌")
+    await _send_question(call.message, state, db, call.from_user.id)
+
+
+@router.message(Command("cancel"), PlacementState.in_test)
+async def placement_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Тест прерван. Уровень не изменён.", reply_markup=main_menu_kb())

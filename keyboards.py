@@ -174,3 +174,21 @@ def notify_kb(enabled: bool, hour: int) -> InlineKeyboardMarkup:
     )])
     rows.append([InlineKeyboardButton(text="✖️ Закрыть", callback_data="notify:close")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def level_menu_kb() -> InlineKeyboardMarkup:
+    """Экран уровня: тесты и ручной выбор."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧪 Быстрый тест (8 вопросов)", callback_data="plc:quick")],
+        [InlineKeyboardButton(text="📝 Полный тест (20 вопросов)", callback_data="plc:full")],
+        [InlineKeyboardButton(text=LEVEL_NAMES["beginner"], callback_data="lvl:beginner"),
+         InlineKeyboardButton(text=LEVEL_NAMES["intermediate"], callback_data="lvl:intermediate")],
+        [InlineKeyboardButton(text=LEVEL_NAMES["advanced"], callback_data="lvl:advanced")],
+    ])
+
+
+def placement_kb(opts: list[str]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=o, callback_data=f"plca:{i}")]
+        for i, o in enumerate(opts)
+    ])
