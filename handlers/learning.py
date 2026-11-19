@@ -208,6 +208,7 @@ async def review_callback(call: CallbackQuery, db: Database, state: FSMContext) 
         await call.answer("Не нашёл карточку 😅", show_alert=True)
         return
     new_box = await db.review_card(call.from_user.id, word, correct)
+    await db.incr_usage(call.from_user.id, "review")
     active = _card_active.get(call.from_user.id)
     if active and active[0] == word:
         translation, example = active[1], active[2]
