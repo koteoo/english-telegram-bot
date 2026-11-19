@@ -327,7 +327,7 @@ async def add_word_hint(message: Message) -> None:
     )
 
 
-@router.message(F.text.Regexp(r"^[A-Za-z][A-Za-z '\-]{1,30}$"))
+@router.message(F.text.regexp(r"^[A-Za-z][A-Za-z '\-]{1,30}$"))
 async def add_user_word(message: Message, db: Database, state: FSMContext) -> None:
     # в режиме разговора обычные сообщения обрабатывает chat-хендлер
     if await state.get_state():
