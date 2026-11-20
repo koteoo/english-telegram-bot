@@ -40,16 +40,9 @@ VOICE_REPLY_ENABLED = os.getenv("VOICE_REPLY_ENABLED", "off")  # off | on | togg
 from pathlib import Path
 BASE_DIR = Path(__file__).parent
 
-# === Константы для лимитов и подсказок (добавлено для совместимости) ===
-class LIMITS:
-    free_chat_messages_per_day = 15
-    plus_voice_inputs_per_day = 15
-    plus_tts_per_day = 10
-
-UPGRADE_HINTS = {
-    "voice": "🎙 Лимит голосовых на сегодня исчерпан. Без лимитов — 💠 Plus: /premium",
-    "chat": "💬 Лимит разговора исчерпан. Без лимита — 💠 Plus: /premium"
-}
+# Лимиты и подсказки живут в plans.py — единственный источник правды.
+# Дубль-заглушка LIMITS/UPGRADE_HINTS удалена: она не импортировалась нигде
+# и вводила в заблуждение устаревшими числами.
 
 # Освоенным считаем слово, дошедшее до коробки с интервалом от 14 дней.
 # Единый порог для бота и админ-панели.

@@ -121,7 +121,7 @@ systemctl daemon-reload && systemctl enable --now english-bot
 | **Groq** (рекомендую) | `GROQ_API_KEY=...` | бесплатный ключ, Llama 3.3 70B, очень быстрый, из РФ без прокси |
 | **Selectel Select AI / Cloud.ru** | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` | российские облака, есть бесплатные пакеты/гранты |
 | **YandexGPT API** | через совместимый эндпоинт | 1 млн символов бесплатно |
-| **Ollama локально** | `OPENAI_BASE_URL=http://localhost:11434/v1` | полностью бесплатно и офлайн; нужен VPS от 2 CPU / 4 GB RAM |
+| **Ollama локально** | `OPENAI_BASE_URL=http://localhost:11434/v1` | бесплатно и офлайн, но **на 2 vCPU ответ ~40 с** — для живого диалога непригодно, нужен GPU или существенно больше CPU |
 
 Без ключей бот автоматически переключается на встроенный офлайн-движок диалога.
 
@@ -172,6 +172,8 @@ systemctl daemon-reload && systemctl enable --now english-bot
 - Если голос офлайн не нужен (Whisper API/не включён): хватит **1 vCPU / 1 GB RAM** (~200 ₽/мес)
 
 **Вариант B — Ollama локально:** модель 7B (qwen2.5:7b-instruct-q4_K_M ≈ 4.7 GB) считает на сервере.
+> Проверено на 2 vCPU / 6 ГБ: даже 3B отвечает ~40 секунд, поэтому в продакшене отключено.
+> Вариант имеет смысл только с GPU или большим числом ядер.
 - Минимум: **4 vCPU / 8 GB RAM / 80 GB NVMe** — ~1500–2500 ₽/мес, ответ ~3–8 сек
 - Комфортно: **8 vCPU / 16 GB RAM** или GPU-сервер (например, Selectel/Yandex Cloud с T4/A10) — быстрее и можно модель 13B+
 - STT faster-whisper `base.en` добавляет ~1 GB RAM; `small.en` — ~2 GB
