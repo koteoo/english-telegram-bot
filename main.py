@@ -35,6 +35,7 @@ async def main() -> None:
         BotCommand(command="/chat", description="🗣 Разговор на английском"),
         BotCommand(command="/tr", description="🔤 Перевод слова (текст/голос)"),
         BotCommand(command="/premium", description="💎 Тарифы и оплата Stars"),
+        BotCommand(command="/donate", description="❤️ Поддержать проект"),
         BotCommand(command="/help", description="Справка"),
         BotCommand(command="/menu", description="Главное меню"),
     ])

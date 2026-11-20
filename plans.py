@@ -64,3 +64,8 @@ UPGRADE_HINTS = {
 
 def next_period(days: int) -> str:
     return (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=days)).isoformat()
+
+# Добровольная поддержка: любая сумма в целых звёздах, тариф не меняет.
+DONATE_PRESETS = (50, 100, 250, 500)
+DONATE_MIN = int(os.getenv("DONATE_MIN", "1"))
+DONATE_MAX = int(os.getenv("DONATE_MAX", "10000"))

@@ -35,8 +35,23 @@ def premium_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text=f"💠 Plus — {PLUS_STARS} ⭐ / 30 дней",
                                   callback_data="buy:plus")],
+            [InlineKeyboardButton(text="❤️ Поддержать проект (донат)",
+                                  callback_data="donate:menu")],
         ]
     )
+
+
+def donate_kb() -> InlineKeyboardMarkup:
+    from plans import DONATE_PRESETS
+    rows, row = [], []
+    for a in DONATE_PRESETS:
+        row.append(InlineKeyboardButton(text=f"{a} ⭐", callback_data=f"donate:{a}"))
+        if len(row) == 2:
+            rows.append(row); row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="✍️ Своя сумма", callback_data="donate:custom")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def level_select_cb(level: str) -> InlineKeyboardMarkup:

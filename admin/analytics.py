@@ -392,6 +392,11 @@ def business(path: str | None = None) -> dict:
             "SELECT COALESCE(SUM(stars),0) FROM payments WHERE substr(created_at,1,10)=?", today)
         out["revenue_30d"] = one(
             "SELECT COALESCE(SUM(stars),0) FROM payments WHERE substr(created_at,1,10)>=?", d30)
+        out["revenue_subs"] = one(
+            "SELECT COALESCE(SUM(stars),0) FROM payments WHERE tier != 'donate'")
+        out["revenue_donations"] = one(
+            "SELECT COALESCE(SUM(stars),0) FROM payments WHERE tier = 'donate'")
+        out["donations_count"] = one("SELECT COUNT(*) FROM payments WHERE tier = 'donate'")
         out["avg_check"] = (round(out["revenue_total"] / out["payments_count"], 1)
                             if out["payments_count"] else 0)
         payers = one("SELECT COUNT(DISTINCT user_id) FROM payments")

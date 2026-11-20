@@ -6,11 +6,12 @@ import datetime as dt
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 
 from db import Database
-from keyboards import main_menu_kb, premium_kb
-from plans import LIMITS, PLAN_NAMES, PLUS_DAYS, PLUS_STARS
+from keyboards import main_menu_kb, premium_kb, donate_kb
+from plans import LIMITS, PLAN_NAMES, PLUS_DAYS, PLUS_STARS, DONATE_MIN, DONATE_MAX
 
 router = Router()
 
@@ -85,16 +86,37 @@ async def checkout(call: CallbackQuery, db: Database) -> None:
 
 @router.pre_checkout_query()
 async def pre_checkout(query: PreCheckoutQuery) -> None:
-    # XTR требует, чтобы сумма была кратна 10 звёздам
-    if query.invoice_payload == "plus" and query.amount == PLUS_STARS:
+    """XTR: сумма в целых звёздах, один элемент цены. Кратность 10 не требуется."""
+    payload = query.invoice_payload
+    if payload == "plus" and query.amount == PLUS_STARS:
         await query.answer(ok=True)
-    else:
-        await query.answer(ok=False, error_message="Что-то пошло не так, попробуйте позже.")
+        return
+    if payload.startswith("donate:"):
+        try:
+            expected = int(payload.split(":", 1)[1])
+        except ValueError:
+            await query.answer(ok=False, error_message="Некорректная сумма.")
+            return
+        if expected == query.amount and DONATE_MIN <= query.amount <= DONATE_MAX:
+            await query.answer(ok=True)
+        else:
+            await query.answer(ok=False, error_message="Сумма не совпадает с инвойсом.")
+        return
+    await query.answer(ok=False, error_message="Что-то пошло не так, попробуйте позже.")
 
 
 @router.message(F.successful_payment)
 async def successful_payment(message: Message, db: Database, state: FSMContext) -> None:
     tp = message.successful_payment
+    if tp.invoice_payload.startswith("donate:"):
+        await db.add_payment(message.from_user.id, "donate", tp.total_amount, 0,
+                             getattr(tp, "telegram_payment_charge_id", None))
+        await message.answer(
+            f"❤️ Спасибо за поддержку! Получено {tp.total_amount} ⭐.\n"
+            "Донат не меняет тариф — он помогает оплачивать сервер и API.",
+            parse_mode="HTML", reply_markup=main_menu_kb(),
+        )
+        return
     days = PLUS_DAYS
     new_plan = tp.invoice_payload
     await db.add_payment(message.from_user.id, new_plan, tp.total_amount, days,
@@ -107,3 +129,76 @@ async def successful_payment(message: Message, db: Database, state: FSMContext) 
         "Все функции уже разблокированы 👇",
         parse_mode="HTML",
     )
+
+
+class DonateState(StatesGroup):
+    waiting_amount = State()
+
+
+DONATE_TEXT = (
+    "❤️ <b>Поддержать проект</b>\n\n"
+    "Бот бесплатный, но сервер и API стоят денег. Донат добровольный "
+    "и <b>не меняет тариф</b> — просто поддержка.\n\n"
+    f"Выберите сумму или введите свою: целое число звёзд от {DONATE_MIN} до {DONATE_MAX}."
+)
+
+
+async def _send_donate_invoice(message: Message, amount: int) -> None:
+    await message.answer_invoice(
+        title="Поддержка English Bot",
+        description="Спасибо! Это добровольный донат, тариф не меняется.",
+        payload=f"donate:{amount}",
+        currency=CURRENCY,
+        prices=[LabeledPrice(label="Поддержка проекта", amount=amount)],
+    )
+
+
+@router.message(Command("donate"))
+async def show_donate(message: Message) -> None:
+    await message.answer(DONATE_TEXT, parse_mode="HTML", reply_markup=donate_kb())
+
+
+@router.callback_query(F.data.startswith("donate:"))
+async def donate_action(call: CallbackQuery, state: FSMContext) -> None:
+    action = call.data.split(":", 1)[1]
+    if action == "menu":
+        await call.answer()
+        await call.message.answer(DONATE_TEXT, parse_mode="HTML", reply_markup=donate_kb())
+        return
+    if action == "custom":
+        await state.set_state(DonateState.waiting_amount)
+        await call.answer()
+        await call.message.answer(
+            f"Введите сумму доната целым числом звёзд ({DONATE_MIN}–{DONATE_MAX}).\n"
+            "Отмена: /cancel"
+        )
+        return
+    if action.isdigit():
+        amount = int(action)
+        if not (DONATE_MIN <= amount <= DONATE_MAX):
+            await call.answer("Сумма вне диапазона", show_alert=True)
+            return
+        await call.answer()
+        await _send_donate_invoice(call.message, amount)
+        return
+    await call.answer()
+
+
+@router.message(DonateState.waiting_amount, Command("cancel"))
+async def donate_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Отменено.", reply_markup=main_menu_kb())
+
+
+@router.message(DonateState.waiting_amount)
+async def donate_custom_amount(message: Message, state: FSMContext) -> None:
+    raw = (message.text or "").strip()
+    if not raw.isdigit():
+        await message.answer("Нужно целое число звёзд, например 150. Отмена: /cancel")
+        return
+    amount = int(raw)
+    if not (DONATE_MIN <= amount <= DONATE_MAX):
+        await message.answer(f"Сумма должна быть от {DONATE_MIN} до {DONATE_MAX} ⭐.")
+        return
+    await state.clear()
+    await _send_donate_invoice(message, amount)

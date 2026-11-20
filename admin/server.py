@@ -257,6 +257,7 @@ async function dash(){const o=await api('/api/business');
  ${kpi('Выручка всего',(o.revenue_total||0)+' ⭐',(o.payments_count||0)+' оплат')}
  ${kpi('За 30 дней',(o.revenue_30d||0)+' ⭐','сегодня '+(o.revenue_today||0)+' ⭐')}
  ${kpi('Средний чек',(o.avg_check||0)+' ⭐','ARPU '+(o.arpu||0)+' ⭐')}
+ ${kpi('Донаты',(o.revenue_donations||0)+' ⭐',(o.donations_count||0)+' поддержек')}
  </div>
  <div class="grid g2" style="margin-top:14px">
  <div class="card"><h2>Тарифы</h2>${bars(o.plans||[],'tier','n')}</div>
