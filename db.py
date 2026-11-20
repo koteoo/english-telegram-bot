@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     username TEXT,
     level TEXT NOT NULL DEFAULT 'beginner',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    start_source TEXT
 );
 CREATE TABLE IF NOT EXISTS cards (
     user_id INTEGER NOT NULL,
@@ -126,6 +127,14 @@ class Database:
         await self._db.executescript(_PROFILE_SCHEMA)
         await self._db.executescript(_PAYMENTS_SCHEMA)
         await self._db.executescript(_FEEDBACK_SCHEMA)
+        # миграция: источник прихода (для уже существующих — direct)
+        cur = await self._db.execute("PRAGMA table_info(users)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "start_source" not in cols:
+            await self._db.execute("ALTER TABLE users ADD COLUMN start_source TEXT")
+            await self._db.execute(
+                "UPDATE users SET start_source='direct' WHERE start_source IS NULL")
+            await self._db.commit()
         # миграция: пояс для существующих строк
         try:
             await self._db.execute(
@@ -151,13 +160,15 @@ class Database:
             self._db = None
 
     # ---------------- Пользователи ----------------
-    async def register_user(self, user_id: int, username: str | None, level: str = "beginner") -> None:
+    async def register_user(self, user_id: int, username: str | None,
+                            level: str = "beginner", source: str | None = None) -> None:
+        """Источник фиксируется только при первом /start — первое касание."""
         assert self._db
         await self._db.execute(
-            """INSERT INTO users (user_id, username, level, created_at)
-               VALUES (?, ?, ?, ?)
+            """INSERT INTO users (user_id, username, level, created_at, start_source)
+               VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET username = excluded.username""",
-            (user_id, username, level, _now().isoformat()),
+            (user_id, username, level, _now().isoformat(), source or "direct"),
         )
         await self._db.execute("INSERT OR IGNORE INTO stats (user_id) VALUES (?)", (user_id,))
         await self._db.commit()
