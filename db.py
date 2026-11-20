@@ -294,7 +294,6 @@ class Database:
 
     # ---------------- Тарифные планы ----------------
     async def get_plan(self, user_id: int) -> tuple[str, str | None]:
-        return "premium", None  # ВРЕМЕННО: всем выдан Premium
         assert self._db
         cur = await self._db.execute("SELECT tier, expires_at FROM plans WHERE user_id = ?", (user_id,))
         row = await cur.fetchone()
@@ -302,7 +301,7 @@ class Database:
             return "free", None
             
         tier, expires_at = row[0], row[1]
-        if tier != "premium" and expires_at:
+        if expires_at:
             if dt.datetime.fromisoformat(expires_at) <= _now():
                 await self._db.execute(
                     "UPDATE plans SET tier = 'free', expires_at = NULL WHERE user_id = ?", (user_id,)
@@ -311,9 +310,10 @@ class Database:
                 return "free", None
         return tier, expires_at
 
-    async def set_plan(self, user_id: int, tier: str, days: int) -> None:
+    async def set_plan(self, user_id: int, tier: str, days: int | None) -> None:
+        """days=None — бессрочный доступ (для владельца)."""
         assert self._db
-        expires_at = None if tier == "premium" else next_period(days)
+        expires_at = None if days is None else next_period(days)
         await self._db.execute(
             """INSERT INTO plans (user_id, tier, expires_at) VALUES (?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET tier = excluded.tier, expires_at = excluded.expires_at""",
@@ -323,10 +323,8 @@ class Database:
 
     async def is_allowed(self, user_id: int, feature: str) -> bool:
         tier, _ = await self.get_plan(user_id)
-        if tier == "premium":
-            return True
         if feature == "voice":
-            return tier == "plus"
+            return tier == "plus"   # лимиты для Free добавим отдельным шагом
         if feature == "topics_all":
             return tier == "plus"
         if feature == "auto_reviews":
@@ -376,7 +374,7 @@ class Database:
         cur = await self._db.execute(
             """SELECT DISTINCT c.user_id FROM cards c
                JOIN plans p ON p.user_id = c.user_id
-               WHERE c.next_review <= ? AND p.tier IN ('plus', 'premium')
+               WHERE c.next_review <= ? AND p.tier = 'plus'
                LIMIT ?""",
             (_now().isoformat(), limit),
         )
