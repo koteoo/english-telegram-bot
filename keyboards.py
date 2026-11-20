@@ -30,11 +30,11 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
 
 
 def premium_kb() -> InlineKeyboardMarkup:
-    from plans import PLUS_STARS, PREMIUM_STARS
+    from plans import PLUS_STARS
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=f"💠 Plus — {PLUS_STARS} ⭐", callback_data="buy:plus")],
-            [InlineKeyboardButton(text=f"👑 Premium — {PREMIUM_STARS} ⭐", callback_data="buy:premium")],
+            [InlineKeyboardButton(text=f"💠 Plus — {PLUS_STARS} ⭐ / 30 дней",
+                                  callback_data="buy:plus")],
         ]
     )
 

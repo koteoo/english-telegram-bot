@@ -98,7 +98,7 @@ def overview(path: str | None = None) -> dict:
         if "plans" in tb:
             out["plans"] = q("SELECT tier, COUNT(*) n FROM plans GROUP BY tier")
             out["paid_users"] = one(
-                "SELECT COUNT(*) FROM plans WHERE tier IN ('plus','premium')")
+                "SELECT COUNT(*) FROM plans WHERE tier = 'plus'")
         else:
             out["plans"], out["paid_users"] = [], 0
         if "user_profile" in tb:
@@ -381,7 +381,7 @@ def business(path: str | None = None) -> dict:
         out["active_week"] = one(
             "SELECT COUNT(DISTINCT user_id) FROM usage_counters WHERE day>=?", d7)
         out["paying_now"] = one(
-            "SELECT COUNT(*) FROM plans WHERE tier IN ('plus','premium') "
+            "SELECT COUNT(*) FROM plans WHERE tier = 'plus' "
             "AND (expires_at IS NULL OR expires_at > ?)", now.isoformat())
         out["conversion_pct"] = (
             round(100.0 * out["paying_now"] / out["users_total"], 1)
@@ -406,7 +406,7 @@ def business(path: str | None = None) -> dict:
             "GROUP BY tier ORDER BY stars DESC")
         out["expiring"] = rows(
             "SELECT user_id, tier, expires_at FROM plans "
-            "WHERE tier IN ('plus','premium') AND expires_at IS NOT NULL "
+            "WHERE tier = 'plus' AND expires_at IS NOT NULL "
             "AND expires_at > ? AND expires_at <= ? ORDER BY expires_at",
             now.isoformat(), (now + dt.timedelta(days=7)).isoformat())
         out["daily"] = rows(

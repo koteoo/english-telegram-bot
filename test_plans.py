@@ -53,9 +53,9 @@ async def run() -> None:
     assert (await db.get_plan(uid))[0] == "free"
 
     # Premium бессрочный
-    await db.set_plan(uid, "premium", 30)
+    await db.set_plan(uid, "plus", 30)
     tier, exp = await db.get_plan(uid)
-    assert tier == "premium" and exp is None
+    assert tier == "plus" and exp is not None
     assert await db.is_allowed(uid, "voice")
 
     # авто-повторения: только у платных с due-карточками

@@ -286,14 +286,14 @@ async function users(page=0){const f=new URLSearchParams({q:$('#uq')?.value||'',
  <td>${(u.last_active||'—')}</td><td class="mut">${(u.created_at||'').slice(0,10)}</td></tr>`).join('');
  $('#m').innerHTML=`<div class="card"><div class="row">
  <input id="uq" placeholder="ID или @username" value="${$('#uq')?.value||''}">
- <select id="up"><option value="">все тарифы</option>${['free','plus','premium'].map(x=>`<option ${$('#up')?.value==x?'selected':''}>${x}</option>`).join('')}</select>
+ <select id="up"><option value="">все тарифы</option>${['free','plus'].map(x=>`<option ${$('#up')?.value==x?'selected':''}>${x}</option>`).join('')}</select>
  <button onclick="users(0)">Найти</button><span class="mut">всего: ${d.total}</span></div>
  <div style="overflow:auto"><table><tr><th>ID</th><th>Username</th><th>Тариф</th><th>Оплачено</th><th>Платежей</th><th>Подписка до</th><th>Активен</th><th>Регистрация</th></tr>${rows||'<tr><td colspan=8 class="mut">пусто</td></tr>'}</table></div>
  <div class="row" style="margin-top:10px">${page>0?'<button class="sec" onclick="users('+(page-1)+')">← назад</button>':''}
  ${d.total>(page+1)*100?'<button class="sec" onclick="users('+(page+1)+')">вперёд →</button>':''}</div></div>
  <div id="detail"></div>`;}
 
-function tierPill(t){const c={free:'mut',plus:'warn',premium:'ok'}[t]||'mut';return `<span class="pill ${c}">${t||'free'}</span>`}
+function tierPill(t){const c={free:'mut',plus:'ok',donate:'warn'}[t]||'mut';return `<span class="pill ${c}">${t||'free'}</span>`}
 async function userCard(id){const d=await api('/api/user/'+id);
  const pays=(d.payments||[]);
  $('#detail').innerHTML=`<div class="card" style="margin-top:14px"><h2>Пользователь ${id} · ${d.user?.username||''} ${tierPill(d.plan?.tier||'free')}</h2>

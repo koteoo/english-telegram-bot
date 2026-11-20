@@ -15,10 +15,8 @@ import datetime as dt
 import os
 from dataclasses import dataclass
 
-PREMIUM_DAYS = int(os.getenv("PREMIUM_DAYS", "30"))
 PLUS_DAYS = int(os.getenv("PLUS_DAYS", "30"))
 
-PREMIUM_STARS = int(os.getenv("PREMIUM_STARS", "250"))   # ~$2.5 за 30 дней
 PLUS_STARS = int(os.getenv("PLUS_STARS", "120"))         # ~$1.2 за 30 дней
 
 
@@ -52,15 +50,15 @@ LIMITS = Limits(
     open_topics_free=_env_int("OPEN_TOPICS_FREE", Limits.open_topics_free),
 )
 
-PLAN_NAMES = {"free": "🆓 Free", "plus": "💠 Plus", "premium": "👑 Premium"}
+PLAN_NAMES = {"free": "🆓 Free", "plus": "💠 Plus"}
 
 UPGRADE_HINTS = {
     "voice": "На бесплатном плане 5 озвучек и 5 голосовых в день. Без лимитов — 💠 Plus: /premium",
-    "topics": "Эта тема откроется на планах 💠 Plus и 👑 Premium. Все планы: /premium",
+    "topics": "Эта тема откроется на 💠 Plus. Тарифы: /premium",
     "words": "На бесплатном плане доступно {limit} новых слов в день. Больше — на 💠 Plus: /premium",
     "quiz": "На бесплатном плане {limit} вопроса квиза в день. Без лимита — на 💠 Plus: /premium",
-    "chat": "На бесплатном плане {limit} сообщений чата в день. Без лимита — на 👑 Premium: /premium",
-    "auto_reviews": "Авто-повторения слов присылаются на планах 💠 Plus и 👑 Premium. /premium",
+    "chat": "На бесплатном плане {limit} сообщений чата в день. Без лимита — на 💠 Plus: /premium",
+    "auto_reviews": "Авто-повторения слов доступны на 💠 Plus. /premium",
 }
 
 

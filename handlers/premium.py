@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 
 from db import Database
 from keyboards import main_menu_kb, premium_kb
-from plans import LIMITS, PLAN_NAMES, PLUS_DAYS, PLUS_STARS, PREMIUM_DAYS, PREMIUM_STARS
+from plans import LIMITS, PLAN_NAMES, PLUS_DAYS, PLUS_STARS
 
 router = Router()
 
@@ -36,17 +36,14 @@ def pricing_text(plan: str, expires_at: str | None) -> str:
         f"• {LIMITS.free_words_per_day} новых слов/день, квиз {LIMITS.free_quizzes_per_day} вопроса/день",
         f"• Темы: {LIMITS.open_topics_free} из 12, разговор текстом "
         f"({LIMITS.free_chat_messages_per_day} сообщ./день)",
-        "• ❌ Голосовые сообщения недоступны",
+        f"• 🎙 Голос: {LIMITS.free_voice_replies_per_day} озвучек и "
+        f"{LIMITS.free_voice_inputs_per_day} распознаваний в день",
         "",
         f"<b>💠 Plus — {PLUS_STARS} ⭐ / {PLUS_DAYS} дней</b>",
         "• Полный словарь всех уровней, квизы и повторения без лимитов",
         "• 🤖 Бот сам присылает слова на повторение (авто-карточки)",
-        "• 🎙 Голосовые сообщения с разумными лимитами",
+        "• 🎙 Голосовые сообщения без лимитов",
         "• Все 12 тем раскрыты полностью",
-        "",
-        f"<b>👑 Premium — {PREMIUM_STARS} ⭐ / {PREMIUM_DAYS} дней</b>",
-        "• Всё включено и без каких-либо ограничений",
-        "• Приоритетная модель диалога и неограниченный голос",
         "",
         "Оплата прямо в Telegram через Stars 👇",
     ]
@@ -63,7 +60,8 @@ LIMIT_TXT_CHAT = str(LIMITS.free_chat_messages_per_day)
 @router.message(Command("premium"))
 async def show_premium(message: Message, db: Database) -> None:
     plan, expires_at = await db.get_plan(message.from_user.id)
-    await message.answer(pricing_text(plan, expires_at), parse_mode="HTML")
+    await message.answer(pricing_text(plan, expires_at), parse_mode="HTML",
+                         reply_markup=premium_kb())
 
 
 @router.callback_query(F.data.startswith("buy:"))
@@ -71,8 +69,6 @@ async def checkout(call: CallbackQuery, db: Database) -> None:
     tier = call.data.split(":")[1]
     if tier == "plus":
         title, payload, stars, days = f"English Bot — Plus ({PLUS_DAYS} дней)", "plus", PLUS_STARS, PLUS_DAYS
-    elif tier == "premium":
-        title, payload, stars, days = f"English Bot — Premium ({PREMIUM_DAYS} дней)", "premium", PREMIUM_STARS, PREMIUM_DAYS
     else:
         await call.answer("Неизвестный план 😅", show_alert=True)
         return
@@ -90,7 +86,7 @@ async def checkout(call: CallbackQuery, db: Database) -> None:
 @router.pre_checkout_query()
 async def pre_checkout(query: PreCheckoutQuery) -> None:
     # XTR требует, чтобы сумма была кратна 10 звёздам
-    if query.invoice_payload in {"plus", "premium"} and query.amount % 10 == 0:
+    if query.invoice_payload == "plus" and query.amount == PLUS_STARS:
         await query.answer(ok=True)
     else:
         await query.answer(ok=False, error_message="Что-то пошло не так, попробуйте позже.")
@@ -99,7 +95,7 @@ async def pre_checkout(query: PreCheckoutQuery) -> None:
 @router.message(F.successful_payment)
 async def successful_payment(message: Message, db: Database, state: FSMContext) -> None:
     tp = message.successful_payment
-    days = PLUS_DAYS if tp.invoice_payload == "plus" else PREMIUM_DAYS
+    days = PLUS_DAYS
     new_plan = tp.invoice_payload
     await db.add_payment(message.from_user.id, new_plan, tp.total_amount, days,
                          getattr(tp, "telegram_payment_charge_id", None))
