@@ -99,6 +99,21 @@ CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at);
 """
 
 
+_FEEDBACK_SCHEMA = """
+CREATE TABLE IF NOT EXISTS feedback (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    tier       TEXT,
+    status     TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL,
+    handled_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status, created_at);
+"""
+
+
 class Database:
     def __init__(self, path: str = DB_PATH):
         self.path = path
@@ -110,6 +125,7 @@ class Database:
         await self._db.executescript(_NOTIFY_SCHEMA)
         await self._db.executescript(_PROFILE_SCHEMA)
         await self._db.executescript(_PAYMENTS_SCHEMA)
+        await self._db.executescript(_FEEDBACK_SCHEMA)
         # миграция: пояс для существующих строк
         try:
             await self._db.execute(
@@ -557,3 +573,15 @@ class Database:
         )
         await self._db.commit()
         return cur.rowcount > 0
+
+    # ---------------- Обращения пользователей ----------------
+    async def add_feedback(self, user_id: int, kind: str, text: str, tier: str) -> int:
+        """Сохранить обращение, вернуть его номер."""
+        assert self._db
+        cur = await self._db.execute(
+            """INSERT INTO feedback (user_id, kind, text, tier, status, created_at)
+               VALUES (?, ?, ?, ?, 'new', ?)""",
+            (user_id, kind, text, tier, _now().isoformat()),
+        )
+        await self._db.commit()
+        return int(cur.lastrowid)
