@@ -42,11 +42,8 @@ _card_last: dict[int, str] = {}
 
 
 async def _effective_level(db: Database, user_id: int) -> tuple[str, str]:
-    """Уровень для выдачи слов: на бесплатном плане словарь ограничен Beginner."""
+    """Словари всех уровней открыты всем тарифам; ограничение — по числу слов в день."""
     level = await db.get_level(user_id)
-    tier, _ = await db.get_plan(user_id)
-    if tier == "free" and level != "beginner":
-        return "beginner", level
     return level, level
 
 
@@ -82,8 +79,6 @@ async def word_of_day(message: Message, db: Database) -> None:
     )
     await db.incr_usage(message.from_user.id, "words")
     lock_note = ""
-    if eff_level != real_level:
-        lock_note = "\n🔒 На бесплатном плане доступен только словарь Beginner. Полный словарь — 💠 Plus: /premium"
     text = _word_card(item) + ("\n\n➕ Добавлено в твою колоду для повторения!" if added else "") + lock_note
     await message.answer(text, parse_mode="HTML")
 
