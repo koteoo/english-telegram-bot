@@ -1,6 +1,6 @@
 """Обработчики команд и сообщений."""
 from aiogram import Router, F
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import Command, CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
@@ -35,6 +35,9 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
             source = tag
     is_new = not await db.user_exists(message.from_user.id)
     await db.register_user(message.from_user.id, message.from_user.username, source=source)
+    if not is_new:
+        await message.answer("🏠 Главное меню:", reply_markup=main_menu_kb())
+        return
     if is_new and source.startswith("ref_"):
         try:
             inviter = int(source[4:])
@@ -58,6 +61,7 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
 
 
 @router.message(F.text.in_({"🏠 Main menu", "❌ Отмена", "❌Отмена"}))
+@router.message(Command("menu"))
 async def cmd_global_menu(message: Message, state: FSMContext):
     await state.clear()
     # Локальный импорт гарантирует, что функция будет найдена

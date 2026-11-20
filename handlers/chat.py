@@ -180,6 +180,7 @@ async def btn_chat(message: Message, state: FSMContext, db: Database) -> None:
 
 
 @router.message(F.text == "💬 Topics")
+@router.message(Command("topics"))
 async def btn_topics(message: Message, db: Database) -> None:
     await _show_topics(message, db, message.from_user.id)
 

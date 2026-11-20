@@ -2,7 +2,7 @@
 import random
 
 from aiogram import Router, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -352,7 +352,7 @@ async def add_word_hint(message: Message) -> None:
     )
 
 
-@router.message(F.text.regexp(r"^[A-Za-z][A-Za-z '\-]{1,30}$"))
+@router.message(StateFilter(None), F.text.regexp(r"^[A-Za-z][A-Za-z '\-]{1,30}$"))
 async def add_user_word(message: Message, db: Database, state: FSMContext) -> None:
     # в режиме разговора обычные сообщения обрабатывает chat-хендлер
     st = await state.get_state()
@@ -622,7 +622,7 @@ class PlacementState(StatesGroup):
     in_test = State()
 
 
-async def _send_question(msg: Message, state: FSMContext, db: Database, uid: int) -> None:
+async def _send_placement_question(msg: Message, state: FSMContext, db: Database, uid: int) -> None:
     import placement
     data = await state.get_data()
     ids, pos, seed = data["ids"], data["pos"], data["seed"]
@@ -690,7 +690,7 @@ async def _begin_placement(message: Message, state: FSMContext, db: Database,
     ids = placement.QUICK if mode == "quick" else placement.FULL
     await state.set_state(PlacementState.in_test)
     await state.update_data(ids=list(ids), pos=0, answers=[], seed=random.randint(1, 10**6))
-    await _send_question(message, state, db, user_id)
+    await _send_placement_question(message, state, db, user_id)
 
 
 async def placement_start(call: CallbackQuery, state: FSMContext, db: Database) -> None:
@@ -736,7 +736,7 @@ async def placement_answer(call: CallbackQuery, state: FSMContext, db: Database)
     answers = list(data["answers"]) + [[level, ok]]
     await state.update_data(answers=answers, pos=pos + 1)
     await call.answer("Верно ✅" if ok else "Неверно ❌")
-    await _send_question(call.message, state, db, call.from_user.id)
+    await _send_placement_question(call.message, state, db, call.from_user.id)
 
 
 @router.message(Command("cancel"), PlacementState.in_test)
