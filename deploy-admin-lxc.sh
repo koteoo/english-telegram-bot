@@ -1,73 +1,61 @@
 #!/usr/bin/env bash
-# ============================================================
-# Установка ВЕБ-ПАНЕЛИ МОНИТОРИНГА бота внутри LXC-контейнера
-# (классический LXC: запускать через lxc-attach с хоста Kali).
+# Веб-панель мониторинга бота внутри LXC-контейнера (классический LXC).
+# Панель — отдельный сервис: БД бота только на чтение, код бота не изменяется.
+# Слушает ЧАСТНЫЙ адрес контейнера; доступ — через SSH-туннель, наружу не выставляем.
 #
-# Панель — ОТДЕЛЬНЫЙ сервис. Код бота НЕ изменяется и НЕ перезапускается;
-# панель только читает SQLite-БД бота (режим read-only), показывает её
-# статистику, логи, состояние сервиса и даёт браузерный редактор кода
-# для модернизации (+ кнопка «перезапустить бота» по желанию админа).
-#
-#   sudo ./deploy-admin-lxc.sh              # установить в контейнер english-bot
-#   CT_NAME=myct PORT=9000 ./deploy-admin-lxc.sh
-#
-# С хоста можно вызвать и так:
 #   sudo lxc-attach -n english-bot -- bash /opt/english-bot/deploy-admin-lxc.sh
-# ============================================================
+#   PORT=9000 ADMIN_HOST=10.0.3.7 bash deploy-admin-lxc.sh
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/english-bot}"
 PORT="${PORT:-8080}"
 ADMIN_USER="${ADMIN_USER:-admin}"
 
-if [ ! -f "${APP_DIR}/admin/server.py" ]; then
-    echo "!! ${APP_DIR}/admin/server.py не найден. Сначала скопируйте проект:"
-    echo "   sudo ./deploy-lxc-nodocker-classic.sh attach"
-    exit 1
-fi
+[ -f "${APP_DIR}/admin/server.py" ] || { echo "!! нет admin/server.py — сначала git pull"; exit 1; }
 
-echo "==> Копируем файлы панели в ${APP_DIR} (если скрипт запускается не из папки проекта)..."
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ "${SRC}" != "${APP_DIR}" ] && [ -d "${SRC}/admin" ]; then
-    mkdir -p "${APP_DIR}/admin"
-    cp -f "${SRC}/admin/"*.py "${APP_DIR}/admin/" 2>/dev/null || true
-    cp -f "${SRC}/deploy-admin-lxc.sh" "${APP_DIR}/" 2>/dev/null || true
-fi
+# Путь к базе берём из .env самого бота, а не угадываем
+BOT_DB="$(grep -E '^DB_PATH=' "${APP_DIR}/.env" | tail -1 | cut -d= -f2- || true)"
+BOT_DB="${BOT_DB:-english_bot.db}"
+case "$BOT_DB" in /*) ;; *) BOT_DB="${APP_DIR}/${BOT_DB}";; esac
+[ -f "$BOT_DB" ] || { echo "!! база не найдена: $BOT_DB"; exit 1; }
 
-# Пароль: существующий сохраняем, иначе генерируем
+HOST_IP="${ADMIN_HOST:-$(hostname -I | awk '{print $1}')}"
+HOST_IP="${HOST_IP:-127.0.0.1}"
+
 ENVF="${APP_DIR}/.env.admin"
-if [ -f "${ENVF}" ] && grep -q '^ADMIN_PASSWORD=' "${ENVF}"; then
-    ADMIN_PASSWORD="$(grep '^ADMIN_PASSWORD=' "${ENVF}" | cut -d= -f2-)"
-    echo "==> Используем существующий пароль из ${ENVF}"
+if [ -f "$ENVF" ] && grep -q '^ADMIN_PASSWORD=..*' "$ENVF"; then
+    ADMIN_PASSWORD="$(grep '^ADMIN_PASSWORD=' "$ENVF" | cut -d= -f2-)"
+    echo "==> используем существующий пароль из ${ENVF}"
 else
-    ADMIN_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 16)"
-    cat > "${ENVF}" <<EOF
-# Секреты веб-панели мониторинга (не коммитить!)
+    ADMIN_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 18)"
+fi
+
+cat > "$ENVF" <<EOF
 ADMIN_USER=${ADMIN_USER}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
-DB_PATH=${APP_DIR}/db/english_bot.db
+DB_PATH=${BOT_DB}
 BOT_SERVICE=english-bot
-PROJECT_WRITE=on
+PROJECT_WRITE=off
+ADMIN_HOST=${HOST_IP}
+ADMIN_PORT=${PORT}
 EOF
-    chmod 600 "${ENVF}"
-    echo "==> Создан ${ENVF} (пароль сгенерирован автоматически)."
-fi
+chmod 600 "$ENVF"
+grep -q '^\.env\.admin$' "${APP_DIR}/.gitignore" 2>/dev/null || echo ".env.admin" >> "${APP_DIR}/.gitignore"
 
-echo "==> Ставим systemd-юнит english-admin.service (порт ${PORT})..."
+PY="${APP_DIR}/venv/bin/python"; [ -x "$PY" ] || PY="$(command -v python3)"
+
 cat > /etc/systemd/system/english-admin.service <<EOF
 [Unit]
-Description=English Bot Admin Web Panel (monitoring + DB stats)
-After=network-online.target
+Description=English Bot Admin Panel (private address only)
+After=network-online.target english-bot.service
 
 [Service]
 Type=simple
 EnvironmentFile=${ENVF}
-Environment=ADMIN_PORT=${PORT}
 WorkingDirectory=${APP_DIR}
-ExecStart=/usr/bin/python3 ${APP_DIR}/admin/server.py --host 0.0.0.0 --port ${PORT}
+ExecStart=${PY} ${APP_DIR}/admin/server.py --host ${HOST_IP} --port ${PORT}
 Restart=always
 RestartSec=5
-NoNewPrivileges=false
 
 [Install]
 WantedBy=multi-user.target
@@ -75,21 +63,19 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now english-admin
+sleep 2
+systemctl is-active english-admin
 
-IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-echo ""
-echo "============================================================"
-echo " ✅ Панель мониторинга запущена внутри контейнера."
-echo "    URL:        http://${IP:-<IP-контейнера>}:${PORT}"
-echo "    логин:      ${ADMIN_USER}"
-echo "    пароль:     ${ADMIN_PASSWORD}"
-echo "    (пароль также в ${ENVF})"
-echo ""
-echo " Из хоста (Kali) открыть на localhost:"
-echo "    sudo lxc-attach -n ${CT_NAME:-english-bot} -- true  # контейнер запущен?"
-echo "    CT_IP=\$(lxc-info -n ${CT_NAME:-english-bot} -H -i | awk '{print \$1}') && echo http://\$CT_IP:${PORT}"
-echo ""
-echo " Логи панели:  journalctl -u english-admin -f"
-echo " Перезапуск:   systemctl restart english-admin"
-echo " Смена пароля: отредактируйте ${ENVF}, затем systemctl restart english-admin"
-echo "============================================================"
+cat <<TXT
+
+Панель: http://${HOST_IP}:${PORT}  (частный адрес, снаружи недоступна)
+  логин:  ${ADMIN_USER}
+  пароль: ${ADMIN_PASSWORD}   (в ${ENVF}, chmod 600)
+
+Доступ с ноутбука — SSH-туннель через хост VPS:
+  ssh -L ${PORT}:${HOST_IP}:${PORT} root@IP_ХОСТА
+  браузер: http://localhost:${PORT}
+
+Запись кода из панели выключена (PROJECT_WRITE=off) — правки через git.
+Логи: journalctl -u english-admin -f
+TXT
