@@ -50,7 +50,7 @@ ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "changeme")
 API_TOKEN = os.getenv("ADMIN_TOKEN", ADMIN_PASSWORD)
 BOT_SERVICE = os.getenv("BOT_SERVICE", "english-bot")
-PROJECT_WRITE = os.getenv("PROJECT_WRITE", "on").lower() in ("1", "on", "true", "yes")
+PROJECT_WRITE = os.getenv("PROJECT_WRITE", "off").lower() in ("1", "on", "true", "yes")
 JOURNAL_CMD = os.getenv("JOURNAL_CMD", f"journalctl -u {BOT_SERVICE} --no-pager -n 500")
 SESSIONS: dict[str, float] = {}
 SESSION_TTL = 12 * 3600
@@ -154,10 +154,15 @@ def files_tree(root: Path, rel: str = "") -> list[dict]:
     return out
 
 
+SECRET_FILES = {".env", ".env.admin", ".env.bak"}
+
+
 def safe_project_path(rel: str) -> Path | None:
     rel = (rel or "").strip().lstrip("/")
     p = (EDITABLE_ROOT / rel).resolve()
-    if not str(p).startswith(str(EDITABLE_ROOT.resolve())):
+    if not p.is_relative_to(EDITABLE_ROOT.resolve()):
+        return None
+    if p.name in SECRET_FILES or p.name.startswith(".env."):
         return None
     return p
 
@@ -529,7 +534,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     ap = argparse.ArgumentParser(description="Админ-панель мониторинга бота")
-    ap.add_argument("--host", default=os.getenv("ADMIN_HOST", "0.0.0.0"))
+    ap.add_argument("--host", default=os.getenv("ADMIN_HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.getenv("ADMIN_PORT", "8080")))
     args = ap.parse_args()
     print(f"[admin] панель: http://{args.host}:{args.port}  (user={ADMIN_USER})")

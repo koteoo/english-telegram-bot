@@ -18,3 +18,4 @@ __pycache__/
 .DS_Store
 ru_multi_cache.pkl
 backups/
+.env.admin
