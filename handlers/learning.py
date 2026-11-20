@@ -474,11 +474,8 @@ async def progress(message: Message, db: Database) -> None:
             f"\n⏳ Лимиты сегодня: слов {words_used}/{LIMITS.free_words_per_day}, "
             f"квиз {quiz_used}/{LIMITS.free_quizzes_per_day}"
         )
-    from config import REPETITION_INTERVALS_DAYS
+    from config import MASTERED_BOX as mastered_box
     pr = await db.get_progress(message.from_user.id)
-    # освоено — дошло до коробки с интервалом от 14 дней
-    mastered_box = next((i for i, d in enumerate(REPETITION_INTERVALS_DAYS) if d >= 14),
-                        len(REPETITION_INTERVALS_DAYS) - 1)
     boxes = pr["boxes"]
     mastered = sum(n for b, n in boxes.items() if b >= mastered_box)
     fresh = boxes.get(0, 0)

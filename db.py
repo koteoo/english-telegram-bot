@@ -199,10 +199,8 @@ class Database:
         box = row[0]
         if correct:
             new_box = min(box + 1, len(REPETITION_INTERVALS_DAYS) - 1)
-            if box == 0 and new_box > 0:
-                await self._db.execute(
-                    "UPDATE stats SET learned = learned + 1 WHERE user_id = ?", (user_id,)
-                )
+            # счётчик stats.learned больше не ведём: он дважды считал одно слово
+            # при возврате в нулевую коробку. Освоение считается из cards.box.
         else:
             new_box = 0
             
@@ -242,7 +240,13 @@ class Database:
             "SELECT learned, quiz_best FROM stats WHERE user_id = ?", (user_id,)
         )
         row = await cur.fetchone()
-        learned, quiz_best = (row[0], row[1]) if row else (0, 0)
+        _legacy_learned, quiz_best = (row[0], row[1]) if row else (0, 0)
+        from config import MASTERED_BOX
+        cur3 = await self._db.execute(
+            "SELECT COUNT(*) FROM cards WHERE user_id = ? AND box >= ?",
+            (user_id, MASTERED_BOX),
+        )
+        learned = int((await cur3.fetchone())[0])
         
         cur2 = await self._db.execute("SELECT COUNT(*) FROM cards WHERE user_id = ?", (user_id,))
         deck_size = (await cur2.fetchone())[0]

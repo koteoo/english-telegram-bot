@@ -50,3 +50,10 @@ UPGRADE_HINTS = {
     "voice": "🎙 Голосовые сообщения доступны только на тарифах Plus и Premium. /premium",
     "chat": "💬 Лимит разговора исчерпан. Без лимита — 👑 Premium: /premium"
 }
+
+# Освоенным считаем слово, дошедшее до коробки с интервалом от 14 дней.
+# Единый порог для бота и админ-панели.
+MASTERED_BOX = next(
+    (i for i, d in enumerate(REPETITION_INTERVALS_DAYS) if d >= 14),
+    len(REPETITION_INTERVALS_DAYS) - 1,
+)

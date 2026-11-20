@@ -14,6 +14,11 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+try:  # единый порог с ботом; fallback на случай запуска без окружения бота
+    from config import MASTERED_BOX
+except Exception:  # noqa: BLE001
+    MASTERED_BOX = 4
+
 
 def default_db_path() -> str:
     """Путь к БД: env DB_PATH (как у бота), иначе стандартные места."""
@@ -84,7 +89,7 @@ def overview(path: str | None = None) -> dict:
         out["cards_total"] = one("SELECT COUNT(*) FROM cards")
         out["cards_due"] = one("SELECT COUNT(*) FROM cards WHERE next_review <= ?",
                                now.isoformat())
-        out["learned_total"] = one("SELECT COALESCE(SUM(learned),0) FROM stats")
+        out["learned_total"] = one("SELECT COUNT(*) FROM cards WHERE box >= ?", MASTERED_BOX)
         out["active_today"] = one(
             "SELECT COUNT(DISTINCT user_id) FROM usage_counters WHERE day=?", today)
         out["active_week"] = one(
@@ -163,9 +168,9 @@ def top_words(limit: int = 20, path: str | None = None) -> list[dict]:
     conn = _connect(path)
     try:
         return [dict(r) for r in conn.execute(
-            """SELECT word, COUNT(*) users,
+            f"""SELECT word, COUNT(*) users,
                       AVG(box) avg_box,
-                      SUM(CASE WHEN box>=3 THEN 1 ELSE 0 END) learned_by
+                      SUM(CASE WHEN box>={MASTERED_BOX} THEN 1 ELSE 0 END) learned_by
                FROM cards GROUP BY word ORDER BY users DESC LIMIT ?""",
             (limit,)).fetchall()]
     except sqlite3.Error:
@@ -210,7 +215,9 @@ def users_list(q: str = "", plan: str = "", level: str = "", limit: int = 100,
                 WHERE {w}""", args).fetchone()[0]
         rows = conn.execute(
             f"""SELECT u.user_id, u.username, u.level, u.created_at,
-                       COALESCE(s.learned,0) learned, COALESCE(s.quiz_best,0) quiz_best,
+                       (SELECT COUNT(*) FROM cards lc
+                         WHERE lc.user_id=u.user_id AND lc.box >= {MASTERED_BOX}) learned,
+                       COALESCE(s.quiz_best,0) quiz_best,
                        (SELECT COUNT(*) FROM cards c WHERE c.user_id=u.user_id) deck,
                        COALESCE(p.tier,'free') tier, p.expires_at,
                        (SELECT MAX(day) FROM usage_counters uc
