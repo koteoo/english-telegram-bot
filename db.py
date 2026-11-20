@@ -5,6 +5,8 @@ import datetime as dt
 import random
 import logging
 from dataclasses import dataclass
+import os
+
 import aiosqlite
 
 from config import DB_PATH, REPETITION_INTERVALS_DAYS
@@ -58,11 +60,14 @@ class CardItem:
     example: str
     box: int
 
+_DEFAULT_TZ = int(os.getenv("NOTIFY_TZ_OFFSET", "5"))
+
 _NOTIFY_SCHEMA = """
 CREATE TABLE IF NOT EXISTS notify_prefs (
     user_id INTEGER PRIMARY KEY,
     enabled INTEGER NOT NULL DEFAULT 1,
-    hour    INTEGER NOT NULL DEFAULT 19
+    hour    INTEGER NOT NULL DEFAULT 19,
+    tz_offset INTEGER NOT NULL DEFAULT 5
 );
 """
 
@@ -80,6 +85,20 @@ CREATE TABLE IF NOT EXISTS user_profile (
 """
 
 
+_PAYMENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS payments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    tier       TEXT NOT NULL,
+    stars      INTEGER NOT NULL,
+    days       INTEGER NOT NULL,
+    charge_id  TEXT UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at);
+"""
+
+
 class Database:
     def __init__(self, path: str = DB_PATH):
         self.path = path
@@ -90,6 +109,14 @@ class Database:
         await self._db.executescript(_SCHEMA)
         await self._db.executescript(_NOTIFY_SCHEMA)
         await self._db.executescript(_PROFILE_SCHEMA)
+        await self._db.executescript(_PAYMENTS_SCHEMA)
+        # миграция: пояс для существующих строк
+        try:
+            await self._db.execute(
+                "ALTER TABLE notify_prefs ADD COLUMN tz_offset INTEGER NOT NULL DEFAULT 5")
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            pass  # колонка уже есть
         
         # Безопасная миграция: добавляем колонки, если их нет (для старых баз)
         try:
@@ -499,3 +526,36 @@ class Database:
         )
         out["activity"] = [dict(zip(("day", "kind", "used"), r)) for r in await cur.fetchall()]
         return out
+
+    async def get_notify_tz(self, user_id: int) -> int:
+        """Смещение от UTC для напоминаний; по умолчанию из NOTIFY_TZ_OFFSET."""
+        assert self._db
+        cur = await self._db.execute(
+            "SELECT tz_offset FROM notify_prefs WHERE user_id = ?", (user_id,)
+        )
+        row = await cur.fetchone()
+        return int(row[0]) if row and row[0] is not None else _DEFAULT_TZ
+
+    async def set_notify_tz(self, user_id: int, offset: int) -> None:
+        assert self._db
+        offset = max(-12, min(14, int(offset)))
+        await self._db.execute(
+            """INSERT INTO notify_prefs (user_id, tz_offset) VALUES (?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET tz_offset = excluded.tz_offset""",
+            (user_id, offset),
+        )
+        await self._db.commit()
+
+    # ---------------- Платежи ----------------
+    async def add_payment(self, user_id: int, tier: str, stars: int, days: int,
+                          charge_id: str | None = None) -> bool:
+        """Записать оплату. UNIQUE по charge_id защищает от двойного учёта."""
+        assert self._db
+        cur = await self._db.execute(
+            """INSERT OR IGNORE INTO payments
+               (user_id, tier, stars, days, charge_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, tier, int(stars), int(days), charge_id, _now().isoformat()),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0

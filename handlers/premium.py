@@ -101,6 +101,8 @@ async def successful_payment(message: Message, db: Database, state: FSMContext) 
     tp = message.successful_payment
     days = PLUS_DAYS if tp.invoice_payload == "plus" else PREMIUM_DAYS
     new_plan = tp.invoice_payload
+    await db.add_payment(message.from_user.id, new_plan, tp.total_amount, days,
+                         getattr(tp, "telegram_payment_charge_id", None))
     await db.set_plan(message.from_user.id, new_plan, days)
     await state.update_data(chat_tier=new_plan)
     await message.answer(
