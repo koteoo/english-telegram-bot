@@ -235,3 +235,16 @@ def goals_kb(current: str | None) -> InlineKeyboardMarkup:
                               callback_data=f"goal:{k}")]
         for k, v in GOALS.items()
     ])
+
+
+def help_menu_kb() -> ReplyKeyboardMarkup:
+    """Подменю справки и обращений."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="❓ Задать вопрос"), KeyboardButton(text="💡 Предложение")],
+            [KeyboardButton(text="⚠️ Жалоба"), KeyboardButton(text="🐞 Ошибка")],
+            [KeyboardButton(text="📖 Инструкция")],
+            [KeyboardButton(text="🏠 Main menu")],
+        ],
+        resize_keyboard=True,
+    )

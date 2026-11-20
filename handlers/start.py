@@ -36,26 +36,6 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
     )
 
 
-@router.message(Command("help"))
-async def cmd_help(message: Message) -> None:
-    await message.answer(
-        "📖 <b>Как пользоваться ботом:</b>\n\n"
-        "📚 <b>Word of the Day</b> — случайное слово с переводом и примером\n"
-        "🃏 <b>Flashcards</b> — повторение выученных слов (интервальная методика)\n"
-        "✍️ <b>Quiz</b> — мини-тест на грамматику (5 вопросов)\n"
-        "➕ <b>Add word</b> — отправь английское слово текстом, и я добавлю его в твою колоду\n"
-        "📊 <b>Progress</b> — твоя статистика\n"
-        "🎯 <b>Level</b> — выбрать уровень: Beginner / Intermediate / Advanced\n"
-        "📚 <b>Topics</b> (/topics) — идеи и лексика по 12 темам: путешествия, еда, работа и др.\n"
-        "🗣 <b>Chat with me</b> (/chat) — интерактивный разговор на английском по выбранной теме\n\n"
-        "Совет: регулярно повторяй слова — бот сам подберёт, что пора вспомнить!",
-        parse_mode="HTML",
-    )
-
-
-
-
-# === ЕДИНЫЙ глобальный обработчик кнопки "🏠 Main menu" и "❌ Отмена" ===
 @router.message(F.text.in_({"🏠 Main menu", "❌ Отмена", "❌Отмена"}))
 async def cmd_global_menu(message: Message, state: FSMContext):
     await state.clear()
