@@ -15,18 +15,17 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
     current_state = await state.get_state()
     if current_state == "TranslateState:waiting_for_text":
         await message.answer(
-        "🦎 Привет! Я <b>Gecko</b> — ваш репетитор английского.\n\n"
-        "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
-        "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
-        "🆓 Каждый день бесплатно · 💠 без лимитов: /premium · 🎁 друг в подарок: /invite",
-        parse_mode="HTML",
+            "🔄 <b>Режим перевода активен</b>\n\n"
+            "✍️ Введите слово или фразу для перевода.\n"
+            "Можете переводить несколько слов подряд.\n\n"
+            "Для выхода нажмите 🏠 Main menu или /cancel",
+            parse_mode="HTML",
             reply_markup=translate_menu_kb(),
         )
         return
 
     import re
     from keyboards import main_menu_kb
-    from plans import LIMITS
 
     parts = (message.text or "").split(maxsplit=1)
     source = "direct"
@@ -49,17 +48,10 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
             )
 
     await message.answer(
-        "👋 Hello! I'm your English learning bot.\n\n"
-        "Слова с интервальным повторением, квизы, разговор с ИИ-тьютором "
-        "голосом и текстом, перевод и тест уровня CEFR.\n\n"
-        f"🆓 <b>Free</b>: словари всех уровней, {LIMITS.free_words_per_day} новых слов "
-        f"и {LIMITS.free_quizzes_per_day} квизов в день, {LIMITS.free_translate_per_day} переводов, "
-        f"{LIMITS.free_chat_messages_per_day} сообщений чата, "
-        f"{LIMITS.free_voice_replies_per_day} озвучек и {LIMITS.free_voice_inputs_per_day} голосовых, "
-        f"{LIMITS.free_reviews_per_day} слова на авто-повторение.\n"
-        "💠 <b>Plus</b> — всё без ограничений: /premium\n\n"
-        "Начните с 🎯 <b>Level</b>: тест определит ваш уровень, "
-        "и слова будут подобраны под него 👇",
+        "🦎 Привет! Я <b>Gecko</b> — ваш репетитор английского.\n\n"
+        "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
+        "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
+        "🆓 Каждый день бесплатно · 💠 без лимитов: /premium · 🎁 друг в подарок: /invite",
         parse_mode="HTML",
         reply_markup=main_menu_kb(),
     )
