@@ -445,6 +445,8 @@ class Handler(BaseHTTPRequestHandler):
     # --- API GET ---
     def _api(self, p: str, qs: dict):
         try:
+            if p == "/api/business":
+                return self._json(analytics.business())
             if p == "/api/overview":
                 return self._json(analytics.overview())
             if p == "/api/status":

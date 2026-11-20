@@ -217,6 +217,10 @@ def users_list(q: str = "", plan: str = "", level: str = "", limit: int = 100,
             f"""SELECT u.user_id, u.username, u.level, u.created_at,
                        (SELECT COUNT(*) FROM cards lc
                          WHERE lc.user_id=u.user_id AND lc.box >= {MASTERED_BOX}) learned,
+                       (SELECT COALESCE(SUM(stars),0) FROM payments pm
+                         WHERE pm.user_id=u.user_id) paid_stars,
+                       (SELECT COUNT(*) FROM payments pm
+                         WHERE pm.user_id=u.user_id) payments_n,
                        COALESCE(s.quiz_best,0) quiz_best,
                        (SELECT COUNT(*) FROM cards c WHERE c.user_id=u.user_id) deck,
                        COALESCE(p.tier,'free') tier, p.expires_at,
@@ -334,3 +338,78 @@ def dump_sql(path: str | None = None) -> str:
         return "\n".join(conn.iterdump()) + "\n"
     finally:
         conn.close()
+
+
+# ---------------- Бизнес-показатели ----------------
+
+def business(path: str | None = None) -> dict:
+    """Аудитория, платящие, выручка и подписки. Учебные метрики не считаются."""
+    now = dt.datetime.now(dt.timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    d7 = (now - dt.timedelta(days=7)).strftime("%Y-%m-%d")
+    d30 = (now - dt.timedelta(days=30)).strftime("%Y-%m-%d")
+    out: dict = {"generated_at": now.isoformat(timespec="seconds"),
+                 "db_path": path or default_db_path()}
+    conn = _connect(path)
+    try:
+        def one(sql, *a, default=0):
+            try:
+                r = conn.execute(sql, a).fetchone()
+                return r[0] if r and r[0] is not None else default
+            except sqlite3.Error:
+                return default
+
+        def rows(sql, *a):
+            try:
+                return [dict(r) for r in conn.execute(sql, a).fetchall()]
+            except sqlite3.Error:
+                return []
+
+        out["users_total"] = one("SELECT COUNT(*) FROM users")
+        out["users_today"] = one(
+            "SELECT COUNT(*) FROM users WHERE substr(created_at,1,10)=?", today)
+        out["users_week"] = one(
+            "SELECT COUNT(*) FROM users WHERE substr(created_at,1,10)>=?", d7)
+        out["active_today"] = one(
+            "SELECT COUNT(DISTINCT user_id) FROM usage_counters WHERE day=?", today)
+        out["active_week"] = one(
+            "SELECT COUNT(DISTINCT user_id) FROM usage_counters WHERE day>=?", d7)
+        out["paying_now"] = one(
+            "SELECT COUNT(*) FROM plans WHERE tier IN ('plus','premium') "
+            "AND (expires_at IS NULL OR expires_at > ?)", now.isoformat())
+        out["conversion_pct"] = (
+            round(100.0 * out["paying_now"] / out["users_total"], 1)
+            if out["users_total"] else 0.0)
+        out["payments_count"] = one("SELECT COUNT(*) FROM payments")
+        out["revenue_total"] = one("SELECT COALESCE(SUM(stars),0) FROM payments")
+        out["revenue_today"] = one(
+            "SELECT COALESCE(SUM(stars),0) FROM payments WHERE substr(created_at,1,10)=?", today)
+        out["revenue_30d"] = one(
+            "SELECT COALESCE(SUM(stars),0) FROM payments WHERE substr(created_at,1,10)>=?", d30)
+        out["avg_check"] = (round(out["revenue_total"] / out["payments_count"], 1)
+                            if out["payments_count"] else 0)
+        payers = one("SELECT COUNT(DISTINCT user_id) FROM payments")
+        out["payers_ever"] = payers
+        out["arpu"] = round(out["revenue_total"] / payers, 1) if payers else 0
+        out["accounting_since"] = one("SELECT MIN(created_at) FROM payments", default=None)
+        out["plans"] = rows(
+            "SELECT COALESCE(p.tier,'free') tier, COUNT(*) n FROM users u "
+            "LEFT JOIN plans p ON p.user_id=u.user_id GROUP BY tier ORDER BY n DESC")
+        out["revenue_by_tier"] = rows(
+            "SELECT tier, SUM(stars) stars, COUNT(*) n FROM payments "
+            "GROUP BY tier ORDER BY stars DESC")
+        out["expiring"] = rows(
+            "SELECT user_id, tier, expires_at FROM plans "
+            "WHERE tier IN ('plus','premium') AND expires_at IS NOT NULL "
+            "AND expires_at > ? AND expires_at <= ? ORDER BY expires_at",
+            now.isoformat(), (now + dt.timedelta(days=7)).isoformat())
+        out["daily"] = rows(
+            "SELECT substr(created_at,1,10) day, SUM(stars) stars, COUNT(*) n "
+            "FROM payments WHERE substr(created_at,1,10)>=? GROUP BY day ORDER BY day", d30)
+        try:
+            out["db_size_kb"] = round(os.path.getsize(out["db_path"]) / 1024, 1)
+        except OSError:
+            out["db_size_kb"] = None
+    finally:
+        conn.close()
+    return out
