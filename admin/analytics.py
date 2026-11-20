@@ -392,6 +392,7 @@ def business(path: str | None = None) -> dict:
         out["conversion_pct"] = (
             round(100.0 * out["paying_now"] / out["users_total"], 1)
             if out["users_total"] else 0.0)
+        out["feedback_new"] = one("SELECT COUNT(*) FROM feedback WHERE status = 'new'")
         out["payments_count"] = one("SELECT COUNT(*) FROM payments")
         out["revenue_total"] = one("SELECT COALESCE(SUM(stars),0) FROM payments")
         out["revenue_today"] = one(
@@ -430,3 +431,31 @@ def business(path: str | None = None) -> dict:
     finally:
         conn.close()
     return out
+
+
+# ---------------- Обращения (только чтение) ----------------
+
+def feedback_list(kind: str = "", status: str = "", limit: int = 100,
+                  offset: int = 0, path: str | None = None) -> dict:
+    where, args = ["1=1"], []
+    if kind:
+        where.append("kind=?"); args.append(kind)
+    if status:
+        where.append("status=?"); args.append(status)
+    w = " AND ".join(where)
+    conn = _connect(path)
+    try:
+        total = conn.execute(f"SELECT COUNT(*) FROM feedback WHERE {w}", args).fetchone()[0]
+        rows = conn.execute(
+            f"""SELECT id, user_id, kind, text, tier, status, created_at, handled_at
+                FROM feedback WHERE {w} ORDER BY id DESC LIMIT ? OFFSET ?""",
+            (*args, limit, offset)).fetchall()
+        by_kind = [dict(r) for r in conn.execute(
+            "SELECT kind, COUNT(*) n FROM feedback GROUP BY kind ORDER BY n DESC").fetchall()]
+        new_n = conn.execute("SELECT COUNT(*) FROM feedback WHERE status='new'").fetchone()[0]
+        return {"total": total, "items": [dict(r) for r in rows],
+                "by_kind": by_kind, "new": new_n}
+    except sqlite3.Error as e:
+        return {"total": 0, "items": [], "by_kind": [], "new": 0, "error": str(e)}
+    finally:
+        conn.close()
