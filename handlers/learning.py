@@ -642,6 +642,33 @@ async def _send_question(msg: Message, state: FSMContext, db: Database, uid: int
             parse_mode="HTML",
             reply_markup=main_menu_kb(),
         )
+        try:
+            import asyncio
+            import logging
+            import card
+            from aiogram.types import (BufferedInputFile, InlineKeyboardButton,
+                                       InlineKeyboardMarkup)
+            pr = await db.get_progress(uid)
+            st = await db.get_stats(uid)
+            me = await msg.bot.get_me()
+            png = await asyncio.to_thread(
+                card.render_level_card, cefr, pr.get("streak", 0),
+                st.get("deck_size", 0), me.username)
+            link = f"https://t.me/{me.username}?start=ref_{uid}"
+            share = ("https://t.me/share/url?url=" + link +
+                     "&text=Мой%20уровень%20английского%20—%20" + cefr +
+                     ".%20А%20у%20тебя%3F")
+            await msg.answer_photo(
+                BufferedInputFile(png, filename="level.png"),
+                caption=(f"🎓 {cefr} — карточка готова.\n"
+                         "Перешлите её другу или отправьте ссылку кнопкой ниже: "
+                         "за приглашение вам придут дни Plus."),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📤 Поделиться ссылкой", url=share)]]),
+            )
+        except Exception as exc:  # noqa: BLE001 — картинка не должна ломать результат теста
+            import logging
+            logging.getLogger(__name__).warning("level card failed: %s", exc)
         return
     q_index = ids[pos]
     _level, text, _opts, _c = placement.QUESTIONS[q_index]
