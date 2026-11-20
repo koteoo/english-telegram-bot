@@ -485,3 +485,67 @@ def set_feedback_status(fid: int, status: str, path: str | None = None) -> dict:
         return {"ok": False, "error": str(e)}
     finally:
         conn.close()
+
+
+# ---------------- Рост: источники и возвраты ----------------
+
+def growth_sources(path: str | None = None) -> dict:
+    d7 = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)).strftime("%Y-%m-%d")
+    conn = _connect(path)
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT COALESCE(start_source,'direct') src, COUNT(*) n, "
+            "SUM(CASE WHEN substr(created_at,1,10)>=? THEN 1 ELSE 0 END) last7 "
+            "FROM users GROUP BY src ORDER BY n DESC", (d7,)).fetchall()]
+        return {"items": rows}
+    except sqlite3.Error as e:
+        return {"items": [], "error": str(e)}
+    finally:
+        conn.close()
+
+
+def retention(path: str | None = None, days: int = 30) -> dict:
+    """D1/D7 по когортам дня регистрации.
+
+    Незрелые когорты (ещё не дожили до дня замера) помечаются None,
+    а не нулём — иначе свежие регистрации выглядели бы как провал удержания.
+    """
+    now = dt.datetime.now(dt.timezone.utc).date()
+    since = (now - dt.timedelta(days=days)).strftime("%Y-%m-%d")
+    conn = _connect(path)
+    try:
+        raw = conn.execute(
+            """SELECT substr(u.created_at,1,10) day, COUNT(*) n,
+                      SUM(CASE WHEN EXISTS(SELECT 1 FROM usage_counters c
+                            WHERE c.user_id=u.user_id
+                              AND c.day=date(substr(u.created_at,1,10),'+1 day'))
+                          THEN 1 ELSE 0 END) d1,
+                      SUM(CASE WHEN EXISTS(SELECT 1 FROM usage_counters c
+                            WHERE c.user_id=u.user_id
+                              AND c.day=date(substr(u.created_at,1,10),'+7 day'))
+                          THEN 1 ELSE 0 END) d7
+               FROM users u WHERE substr(u.created_at,1,10)>=?
+               GROUP BY day ORDER BY day""", (since,)).fetchall()
+    except sqlite3.Error as e:
+        return {"items": [], "error": str(e)}
+    finally:
+        conn.close()
+
+    items, m1n, m1d, m7n, m7d = [], 0, 0, 0, 0
+    for day, n, d1, d7 in raw:
+        dd = dt.date.fromisoformat(day)
+        r1 = r7 = None
+        p1 = p7 = None
+        if dd + dt.timedelta(days=1) <= now:
+            r1, p1 = d1, round(100.0 * d1 / n, 1) if n else 0.0
+            m1n += d1; m1d += n
+        if dd + dt.timedelta(days=7) <= now:
+            r7, p7 = d7, round(100.0 * d7 / n, 1) if n else 0.0
+            m7n += d7; m7d += n
+        items.append({"day": day, "n": n, "d1": r1, "d1_pct": p1, "d7": r7, "d7_pct": p7})
+    return {
+        "items": items,
+        "d1_pct": round(100.0 * m1n / m1d, 1) if m1d else None,
+        "d7_pct": round(100.0 * m7n / m7d, 1) if m7d else None,
+        "d1_cohort": m1d, "d7_cohort": m7d,
+    }

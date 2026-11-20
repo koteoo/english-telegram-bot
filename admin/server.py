@@ -240,13 +240,13 @@ async function api(p,opt={}){const r=await fetch(p,opt);if(r.status===401){locat
  const t=r.headers.get('content-type')||'';return t.includes('json')?r.json():r.text();}
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2500)}
 async function post(p,d){return await api(p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(d||{})})}
-const NAV=[['dash','📊 Обзор'],['users','👥 Люди'],['fb','📨 Обращения'],['charts','📈 Графики'],['sql','🧪 SQL'],['files','🛠 Код'],['logs','📜 Логи'],['sys','⚙️ Сервис']];
+const NAV=[['dash','📊 Обзор'],['users','👥 Люди'],['fb','📨 Обращения'],['growth','📣 Рост'],['charts','📈 Графики'],['sql','🧪 SQL'],['files','🛠 Код'],['logs','📜 Логи'],['sys','⚙️ Сервис']];
 let charts={};
 function shell(active){$('#app').innerHTML=`<header><h1>🤖 English Bot · Admin</h1>
 <nav>${NAV.map(([k,l])=>`<a href='#${k}' class="${k==active?'on':''}" onclick="route('${k}')">${l}</a>`).join('')}</nav>
 <span id="botstate" class="pill"></span></header><main id="m"></main>`;}
 function setDot(s){$('#botstate').innerHTML=s.bot_up?`<span class="dot" style="background:var(--ok)"></span>${s.bot_state} · ${s.bot_service}`:`<span class="dot" style="background:var(--bad)"></span>${s.bot_state||'?'}`}
-async function route(k){shell(k);({dash:dash,users:users,fb:fbPage,charts:chartsPage,sql:sql,files:files,logs:logs,sys:sys})[k]?.();
+async function route(k){shell(k);({dash:dash,users:users,fb:fbPage,growth:growthPage,charts:chartsPage,sql:sql,files:files,logs:logs,sys:sys})[k]?.();
  try{setDot(await api('/api/status'))}catch(e){}}
 // ---- Дашборд
 async function dash(){const o=await api('/api/business');
@@ -306,6 +306,23 @@ async function userCard(id){const d=await api('/api/user/'+id);
  <div><h2>Активность по дням</h2><table><tr><th>день</th><th>слов</th><th>квиз</th><th>чат</th><th>повторы</th></tr>
  ${(d.usage||[]).slice(0,14).map(u=>`<tr><td>${u.day}</td><td>${u.words??''}</td><td>${u.quiz??''}</td><td>${u.chat??''}</td><td>${u.review??''}</td></tr>`).join('')||'<tr><td colspan=5 class="mut">нет</td></tr>'}</table></div></div></div>`;}
 
+// ---- Рост
+async function growthPage(){const s=await api('/api/sources'),r=await api('/api/retention');
+ const src=(s.items||[]).map(x=>`<tr><td>${esc(x.src)}</td><td>${x.n}</td><td>${x.last7||0}</td></tr>`).join('');
+ const ret=(r.items||[]).map(x=>`<tr><td>${x.day}</td><td>${x.n}</td>
+ <td>${x.d1==null?'<span class="mut">—</span>':x.d1+' ('+x.d1_pct+'%)'}</td>
+ <td>${x.d7==null?'<span class="mut">—</span>':x.d7+' ('+x.d7_pct+'%)'}</td></tr>`).join('');
+ $('#m').innerHTML=`<div class="grid g2">
+ <div class="card"><h2>Откуда пришли</h2>
+ <table><tr><th>Источник</th><th>Всего</th><th>За 7 дней</th></tr>${src||'<tr><td colspan=3 class="mut">нет данных</td></tr>'}</table>
+ <p class="mut">Ссылка с меткой: <code>https://t.me/EngXbot?start=channel_a</code><br>
+ Метка фиксируется при первом /start и больше не перезаписывается. Без метки — <code>direct</code>.</p></div>
+ <div class="card"><h2>Возвраты по когортам</h2>
+ <div class="grid g2">${kpi('D1',r.d1_pct==null?'—':r.d1_pct+'%','когорта '+(r.d1_cohort||0)+' чел.')}
+ ${kpi('D7',r.d7_pct==null?'—':r.d7_pct+'%','когорта '+(r.d7_cohort||0)+' чел.')}</div>
+ <table style="margin-top:10px"><tr><th>День регистрации</th><th>Людей</th><th>Вернулись на след. день</th><th>Через 7 дней</th></tr>${ret||'<tr><td colspan=4 class="mut">нет данных</td></tr>'}</table>
+ <p class="mut">Прочерк — когорта ещё не дожила до дня замера, а не нулевое удержание.
+ Возврат считается по любой активности: слово, квиз, чат, повтор.</p></div></div>`;}
 // ---- Обращения
 function kindRu(k){return {question:'❓ Вопрос',idea:'💡 Предложение',complaint:'⚠️ Жалоба',bug:'🐞 Ошибка'}[k]||k}
 async function fbSet(id,st){const r=await fetch('/api/feedback.status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,status:st})});const j=await r.json();if(j.ok){fbPage(0)}else{alert(j.error||'ошибка')}}
@@ -485,6 +502,10 @@ class Handler(BaseHTTPRequestHandler):
                     kind=(qs.get("kind") or [""])[0],
                     status=(qs.get("status") or [""])[0],
                     offset=int((qs.get("p") or ["0"])[0]) * 100))
+            if p == "/api/sources":
+                return self._json(analytics.growth_sources())
+            if p == "/api/retention":
+                return self._json(analytics.retention())
             if p == "/api/business":
                 return self._json(analytics.business())
             if p == "/api/overview":
