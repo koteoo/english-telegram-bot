@@ -328,9 +328,9 @@ class Database:
         if feature == "topics_all":
             return tier == "plus"
         if feature == "auto_reviews":
-            return tier == "plus"
+            return True   # Free: 2 слова в день
         if feature == "full_dictionary":
-            return tier == "plus"
+            return True   # словари всех уровней открыты
         return False
 
     # ---------------- Дневные счётчики (лимиты) ----------------
@@ -374,8 +374,7 @@ class Database:
         assert self._db
         cur = await self._db.execute(
             """SELECT DISTINCT c.user_id FROM cards c
-               JOIN plans p ON p.user_id = c.user_id
-               WHERE c.next_review <= ? AND p.tier = 'plus'
+               WHERE c.next_review <= ?
                LIMIT ?""",
             (_now().isoformat(), limit),
         )

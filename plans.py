@@ -30,10 +30,12 @@ def _env_int(name: str, default: int) -> int:
 @dataclass(frozen=True)
 class Limits:
     free_words_per_day: int = 5          # Word of the Day / добавление слов
-    free_quizzes_per_day: int = 3        # вопросы квиза
+    free_quizzes_per_day: int = 10       # вопросы квиза
     free_chat_messages_per_day: int = 15 # реплики в разговорном чате
     plus_voice_replies_per_day: int = 10 # озвучка ответов (TTS)
     plus_voice_inputs_per_day: int = 15  # распознавание голосовых (STT)
+    free_translate_per_day: int = 30     # переводов в день на Free
+    free_reviews_per_day: int = 2        # слов в авто-повторении на Free
     free_voice_replies_per_day: int = 5  # озвучка ответов на Free
     free_voice_inputs_per_day: int = 5   # распознавание голосовых на Free
     open_topics_free: int = 4            # сколько тем открыто на бесплатном плане
@@ -45,6 +47,8 @@ LIMITS = Limits(
     free_chat_messages_per_day=_env_int("FREE_CHAT_MESSAGES_PER_DAY", Limits.free_chat_messages_per_day),
     plus_voice_replies_per_day=_env_int("PLUS_VOICE_REPLIES_PER_DAY", Limits.plus_voice_replies_per_day),
     plus_voice_inputs_per_day=_env_int("PLUS_VOICE_INPUTS_PER_DAY", Limits.plus_voice_inputs_per_day),
+    free_translate_per_day=_env_int("FREE_TRANSLATE_PER_DAY", Limits.free_translate_per_day),
+    free_reviews_per_day=_env_int("FREE_REVIEWS_PER_DAY", Limits.free_reviews_per_day),
     free_voice_replies_per_day=_env_int("FREE_VOICE_REPLIES_PER_DAY", Limits.free_voice_replies_per_day),
     free_voice_inputs_per_day=_env_int("FREE_VOICE_INPUTS_PER_DAY", Limits.free_voice_inputs_per_day),
     open_topics_free=_env_int("OPEN_TOPICS_FREE", Limits.open_topics_free),
@@ -58,7 +62,7 @@ UPGRADE_HINTS = {
     "words": "На бесплатном плане доступно {limit} новых слов в день. Больше — на 💠 Plus: /premium",
     "quiz": "На бесплатном плане {limit} вопроса квиза в день. Без лимита — на 💠 Plus: /premium",
     "chat": "На бесплатном плане {limit} сообщений чата в день. Без лимита — на 💠 Plus: /premium",
-    "auto_reviews": "Авто-повторения слов доступны на 💠 Plus. /premium",
+    "auto_reviews": "На Free бот присылает 2 слова в день, полный поток — на 💠 Plus: /premium",
 }
 
 

@@ -40,7 +40,10 @@ async def _ping_user(bot: Bot, db: Database, user_id: int, local_hour: int) -> N
         if await db.get_usage(user_id, kind) > 0:
             return
     level = await db.get_level(user_id)
-    due = await db.due_cards(user_id, level, limit=MAX_WORDS_PER_PING)
+    tier, _ = await db.get_plan(user_id)
+    from plans import LIMITS
+    cap = MAX_WORDS_PER_PING if tier == "plus" else LIMITS.free_reviews_per_day
+    due = await db.due_cards(user_id, level, limit=cap)
     if not due:
         return
     lines = ["🤖 <b>Время повторить слова!</b> Нажми кнопку под каждым словом 👇", ""]
