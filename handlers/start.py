@@ -34,7 +34,19 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
         tag = re.sub(r"[^A-Za-z0-9_-]", "", parts[1])[:32]
         if tag:
             source = tag
+    is_new = not await db.user_exists(message.from_user.id)
     await db.register_user(message.from_user.id, message.from_user.username, source=source)
+    if is_new and source.startswith("ref_"):
+        try:
+            inviter = int(source[4:])
+        except ValueError:
+            inviter = 0
+        if inviter and await db.add_referral(inviter, message.from_user.id):
+            await message.answer(
+                "🎁 Вы пришли по приглашению. Добавьте первое слово в колоду "
+                "(📚 Word of the Day или 🃏 Flashcards → ➕ Add word) — "
+                "и получите несколько дней Plus в подарок."
+            )
 
     await message.answer(
         "👋 Hello! I'm your English learning bot.\n\n"

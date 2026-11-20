@@ -22,6 +22,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🗣 Chat with me")],
             [KeyboardButton(text="💎 Тарифы"), KeyboardButton(text="❓ Help")],
             [KeyboardButton(text="🔄 Translate"), KeyboardButton(text="🔔 Напоминания")],
+            [KeyboardButton(text="👥 Пригласить друга")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Choose an action…",

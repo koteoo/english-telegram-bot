@@ -10,7 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from db import Database
 import dictionary
-from handlers import start, learning, chat, premium, translate, feedback
+from handlers import start, learning, chat, premium, translate, feedback, referral
 from scheduler import auto_review_loop
 from aiogram.types import BotCommand
 
@@ -25,7 +25,8 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(start.router)
     dp.include_router(premium.router)
-    dp.include_router(feedback.router)   # Help с обращениями — раньше start.router    # оплата звёздами — раньше остальных callback
+    dp.include_router(feedback.router)
+    dp.include_router(referral.router)   # Help с обращениями — раньше start.router    # оплата звёздами — раньше остальных callback
     dp.include_router(learning.router)  # ВАЖНО: learning ПЕРЕД chat, чтобы кнопки меню работали
     dp.include_router(chat.router)  # чат
     dp.include_router(translate.router)  # перевод — в самом конце

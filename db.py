@@ -115,6 +115,19 @@ CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status, created_at);
 """
 
 
+_REFERRAL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS referrals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    inviter_id   INTEGER NOT NULL,
+    invitee_id   INTEGER NOT NULL UNIQUE,
+    created_at   TEXT NOT NULL,
+    activated_at TEXT,
+    rewarded_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ref_inviter ON referrals(inviter_id);
+"""
+
+
 class Database:
     def __init__(self, path: str = DB_PATH):
         self.path = path
@@ -127,6 +140,7 @@ class Database:
         await self._db.executescript(_PROFILE_SCHEMA)
         await self._db.executescript(_PAYMENTS_SCHEMA)
         await self._db.executescript(_FEEDBACK_SCHEMA)
+        await self._db.executescript(_REFERRAL_SCHEMA)
         # миграция: источник прихода (для уже существующих — direct)
         cur = await self._db.execute("PRAGMA table_info(users)")
         cols = {r[1] for r in await cur.fetchall()}
@@ -596,3 +610,32 @@ class Database:
         )
         await self._db.commit()
         return int(cur.lastrowid)
+
+    # ---------------- Приглашения ----------------
+    async def user_exists(self, user_id: int) -> bool:
+        assert self._db
+        cur = await self._db.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+        return await cur.fetchone() is not None
+
+    async def add_referral(self, inviter_id: int, invitee_id: int) -> bool:
+        """Приглашение учитывается только для нового человека и не самому себе."""
+        assert self._db
+        if inviter_id == invitee_id:
+            return False
+        cur = await self._db.execute(
+            """INSERT OR IGNORE INTO referrals (inviter_id, invitee_id, created_at)
+               VALUES (?, ?, ?)""",
+            (inviter_id, invitee_id, _now().isoformat()),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def referral_stats(self, user_id: int) -> dict:
+        assert self._db
+        cur = await self._db.execute(
+            """SELECT COUNT(*) total,
+                      SUM(CASE WHEN activated_at IS NOT NULL THEN 1 ELSE 0 END) active,
+                      SUM(CASE WHEN rewarded_at IS NOT NULL THEN 1 ELSE 0 END) rewarded
+               FROM referrals WHERE inviter_id = ?""", (user_id,))
+        row = await cur.fetchone()
+        return {"total": row[0] or 0, "active": row[1] or 0, "rewarded": row[2] or 0}
