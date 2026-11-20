@@ -101,10 +101,10 @@ async def _maybe_voice(message: Message, state: FSMContext, db: Database, text: 
     if mode == "off" or (mode == "toggle" and not data.get("voice")):
         return
     uid = message.from_user.id
-    if not await db.is_allowed(uid, "voice"):
-        return
     tier, _ = await db.get_plan(uid)
-    if tier == "plus" and not await db.within_limit(uid, "voice_out", LIMITS.plus_voice_replies_per_day):
+    cap = (LIMITS.plus_voice_replies_per_day if tier == "plus"
+           else LIMITS.free_voice_replies_per_day)
+    if not await db.within_limit(uid, "voice_out", cap):
         return
     import speech
     if not speech.tts_available():
@@ -283,15 +283,15 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
     import speech
 
     uid = message.from_user.id
-    if not await db.is_allowed(uid, "voice"):
-        await message.answer(UPGRADE_HINTS["voice"], reply_markup=await _chat_kb(state))
-        return
     tier, _ = await db.get_plan(uid)
-    if tier == "plus" and not await db.within_limit(uid, "voice_in", LIMITS.plus_voice_inputs_per_day):
+    cap = (LIMITS.plus_voice_inputs_per_day if tier == "plus"
+           else LIMITS.free_voice_inputs_per_day)
+    if not await db.within_limit(uid, "voice_in", cap):
         used = await db.get_usage(uid, "voice_in")
+        tail = ("Лимит обновится завтра." if tier == "plus"
+                else "Больше — на 💠 Plus: /premium")
         await message.answer(
-            f"📭 Лимит голосовых на сегодня исчерпан ({used}/{LIMITS.plus_voice_inputs_per_day}).\n"
-            "Без лимита — на 👑 Premium: /premium",
+            f"📭 Лимит голосовых на сегодня исчерпан ({used}/{cap}).\n" + tail,
             reply_markup=await _chat_kb(state),
         )
         return

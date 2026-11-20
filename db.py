@@ -324,7 +324,7 @@ class Database:
     async def is_allowed(self, user_id: int, feature: str) -> bool:
         tier, _ = await self.get_plan(user_id)
         if feature == "voice":
-            return tier == "plus"   # лимиты для Free добавим отдельным шагом
+            return True   # голос доступен всем, объём задаётся лимитами тарифа
         if feature == "topics_all":
             return tier == "plus"
         if feature == "auto_reviews":

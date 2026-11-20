@@ -36,6 +36,8 @@ class Limits:
     free_chat_messages_per_day: int = 15 # реплики в разговорном чате
     plus_voice_replies_per_day: int = 10 # озвучка ответов (TTS)
     plus_voice_inputs_per_day: int = 15  # распознавание голосовых (STT)
+    free_voice_replies_per_day: int = 5  # озвучка ответов на Free
+    free_voice_inputs_per_day: int = 5   # распознавание голосовых на Free
     open_topics_free: int = 4            # сколько тем открыто на бесплатном плане
 
 
@@ -45,13 +47,15 @@ LIMITS = Limits(
     free_chat_messages_per_day=_env_int("FREE_CHAT_MESSAGES_PER_DAY", Limits.free_chat_messages_per_day),
     plus_voice_replies_per_day=_env_int("PLUS_VOICE_REPLIES_PER_DAY", Limits.plus_voice_replies_per_day),
     plus_voice_inputs_per_day=_env_int("PLUS_VOICE_INPUTS_PER_DAY", Limits.plus_voice_inputs_per_day),
+    free_voice_replies_per_day=_env_int("FREE_VOICE_REPLIES_PER_DAY", Limits.free_voice_replies_per_day),
+    free_voice_inputs_per_day=_env_int("FREE_VOICE_INPUTS_PER_DAY", Limits.free_voice_inputs_per_day),
     open_topics_free=_env_int("OPEN_TOPICS_FREE", Limits.open_topics_free),
 )
 
 PLAN_NAMES = {"free": "🆓 Free", "plus": "💠 Plus", "premium": "👑 Premium"}
 
 UPGRADE_HINTS = {
-    "voice": "Голосовые сообщения доступны на планах 💠 Plus и 👑 Premium. Улучшить план: /premium",
+    "voice": "На бесплатном плане 5 озвучек и 5 голосовых в день. Без лимитов — 💠 Plus: /premium",
     "topics": "Эта тема откроется на планах 💠 Plus и 👑 Premium. Все планы: /premium",
     "words": "На бесплатном плане доступно {limit} новых слов в день. Больше — на 💠 Plus: /premium",
     "quiz": "На бесплатном плане {limit} вопроса квиза в день. Без лимита — на 💠 Plus: /premium",
