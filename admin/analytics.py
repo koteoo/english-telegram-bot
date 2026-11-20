@@ -380,9 +380,15 @@ def business(path: str | None = None) -> dict:
             "SELECT COUNT(DISTINCT user_id) FROM usage_counters WHERE day=?", today)
         out["active_week"] = one(
             "SELECT COUNT(DISTINCT user_id) FROM usage_counters WHERE day>=?", d7)
-        out["paying_now"] = one(
+        out["active_plus"] = one(
             "SELECT COUNT(*) FROM plans WHERE tier = 'plus' "
             "AND (expires_at IS NULL OR expires_at > ?)", now.isoformat())
+        out["paying_now"] = one(
+            "SELECT COUNT(DISTINCT p.user_id) FROM plans p "
+            "JOIN payments pm ON pm.user_id = p.user_id AND pm.tier != 'donate' "
+            "WHERE p.tier = 'plus' AND (p.expires_at IS NULL OR p.expires_at > ?)",
+            now.isoformat())
+        out["granted_plus"] = max(out["active_plus"] - out["paying_now"], 0)
         out["conversion_pct"] = (
             round(100.0 * out["paying_now"] / out["users_total"], 1)
             if out["users_total"] else 0.0)

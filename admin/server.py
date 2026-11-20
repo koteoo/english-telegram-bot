@@ -253,7 +253,7 @@ async function dash(){const o=await api('/api/business');
  $('#m').innerHTML=`<div class="grid g6">
  ${kpi('Пользователей',o.users_total,'+'+(o.users_today||0)+' сегодня · +'+(o.users_week||0)+' за 7 дней')}
  ${kpi('Активны сегодня',o.active_today,(o.active_week||0)+' за 7 дней')}
- ${kpi('Платящих сейчас',o.paying_now,'конверсия '+(o.conversion_pct||0)+'%')}
+ ${kpi('Платящих сейчас',o.paying_now,'конверсия '+(o.conversion_pct||0)+'% · выдано вручную '+(o.granted_plus||0))}
  ${kpi('Выручка всего',(o.revenue_total||0)+' ⭐',(o.payments_count||0)+' оплат')}
  ${kpi('За 30 дней',(o.revenue_30d||0)+' ⭐','сегодня '+(o.revenue_today||0)+' ⭐')}
  ${kpi('Средний чек',(o.avg_check||0)+' ⭐','ARPU '+(o.arpu||0)+' ⭐')}

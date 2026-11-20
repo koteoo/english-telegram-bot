@@ -9,6 +9,8 @@ import dictionary_api
 import dictionary
 from data.vocabulary import VOCABULARY
 from keyboards import main_menu_kb, translate_menu_kb
+from db import Database
+from plans import LIMITS
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -34,18 +36,18 @@ async def cmd_translate_menu(message: Message, state: FSMContext):
 
 # 2. Обработка текста ТОЛЬКО когда пользователь находится в режиме перевода
 @router.message(TranslateState.waiting_for_text)
-async def process_translate_input(message: Message, state: FSMContext):
+async def process_translate_input(message: Message, state: FSMContext, db: Database):
     # Если пользователь нажал кнопку выхода, пропускаем (обработает start.py)
     if "Main menu" in message.text or "Отмена" in message.text:
         return
         
     text = message.text.strip()
-    await process_translation(message, text)
+    await process_translation(message, text, db)
 
 
 # 3. Ручная команда /tr (работает из любого состояния)
 @router.message(Command("tr"))
-async def cmd_translate_manual(message: Message, state: FSMContext):
+async def cmd_translate_manual(message: Message, state: FSMContext, db: Database):
     text = message.text.replace("/tr", "", 1).strip()
     if not text:
         await state.set_state(TranslateState.waiting_for_text)
@@ -60,7 +62,7 @@ async def cmd_translate_manual(message: Message, state: FSMContext):
         return
     
     await state.clear()
-    await process_translation(message, text)
+    await process_translation(message, text, db)
 
 
 # 4. Команда /cancel для выхода из режима перевода
@@ -73,7 +75,19 @@ async def cmd_cancel_translate(message: Message, state: FSMContext):
     )
 
 
-async def process_translation(message: Message, text: str):
+async def process_translation(message: Message, text: str, db: Database):
+    uid = message.from_user.id
+    tier, _ = await db.get_plan(uid)
+    if tier != "plus" and not await db.within_limit(uid, "translate", LIMITS.free_translate_per_day):
+        used = await db.get_usage(uid, "translate")
+        await message.answer(
+            f"📭 Лимит переводов на сегодня исчерпан ({used}/{LIMITS.free_translate_per_day}).\n"
+            "Без лимита — 💠 Plus: /premium",
+            reply_markup=main_menu_kb(),
+        )
+        return
+    await db.incr_usage(uid, "translate")
+
     """Основная функция перевода."""
     # 1. Локальный поиск через обновленную функцию
     has_cyr = any(ch in "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" for ch in text.lower())
