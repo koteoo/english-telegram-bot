@@ -70,3 +70,21 @@ GOALS = {
     "daily": "💬 Повседневное общение",
     "relocation": "🏡 Переезд",
 }
+
+
+GOALS_EN = {
+    "travel": "travel and tourism",
+    "work": "work and career",
+    "exam": "passing an English exam (IELTS/TOEFL)",
+    "daily": "everyday conversation",
+    "relocation": "moving to another country",
+}
+
+CEFR_STYLE = {
+    "A1": "Use very simple words and short sentences.",
+    "A2": "Use simple everyday words and short sentences.",
+    "B1": "Use natural everyday English, moderate complexity.",
+    "B2": "Use natural English with some idioms.",
+    "C1": "Use rich, precise English.",
+    "C2": "Use sophisticated, idiomatic English.",
+}

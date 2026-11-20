@@ -136,7 +136,9 @@ async def _respond(message: Message, state: FSMContext, db: Database, user_text:
 
     if topic_id:
         await db.incr_usage(message.from_user.id, f"topic:{topic_id}")
-    answer = await chat_reply(history, topic_id, level)
+    prof = await db.get_profile(message.from_user.id)
+    answer = await chat_reply(history, topic_id, level,
+                              goal=prof["goal"], cefr=prof["cefr"])
     if answer:
         history.append({"role": "assistant", "content": answer})
         body = _fmt(answer)
