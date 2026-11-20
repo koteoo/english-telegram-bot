@@ -549,3 +549,23 @@ def retention(path: str | None = None, days: int = 30) -> dict:
         "d7_pct": round(100.0 * m7n / m7d, 1) if m7d else None,
         "d1_cohort": m1d, "d7_cohort": m7d,
     }
+
+
+def referral_overview(path: str | None = None) -> dict:
+    conn = _connect(path)
+    try:
+        t = conn.execute(
+            """SELECT COUNT(*),
+                      SUM(CASE WHEN activated_at IS NOT NULL THEN 1 ELSE 0 END),
+                      SUM(CASE WHEN rewarded_at IS NOT NULL THEN 1 ELSE 0 END)
+               FROM referrals""").fetchone()
+        top = [dict(r) for r in conn.execute(
+            """SELECT inviter_id, COUNT(*) n,
+                      SUM(CASE WHEN rewarded_at IS NOT NULL THEN 1 ELSE 0 END) rew
+               FROM referrals GROUP BY inviter_id ORDER BY n DESC LIMIT 10""").fetchall()]
+        return {"invites": t[0] or 0, "activated": t[1] or 0,
+                "rewarded": t[2] or 0, "top": top}
+    except sqlite3.Error as e:
+        return {"invites": 0, "activated": 0, "rewarded": 0, "top": [], "error": str(e)}
+    finally:
+        conn.close()

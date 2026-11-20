@@ -307,12 +307,17 @@ async function userCard(id){const d=await api('/api/user/'+id);
  ${(d.usage||[]).slice(0,14).map(u=>`<tr><td>${u.day}</td><td>${u.words??''}</td><td>${u.quiz??''}</td><td>${u.chat??''}</td><td>${u.review??''}</td></tr>`).join('')||'<tr><td colspan=5 class="mut">нет</td></tr>'}</table></div></div></div>`;}
 
 // ---- Рост
-async function growthPage(){const s=await api('/api/sources'),r=await api('/api/retention');
+async function growthPage(){const s=await api('/api/sources'),r=await api('/api/retention'),rf=await api('/api/referrals');
  const src=(s.items||[]).map(x=>`<tr><td>${esc(x.src)}</td><td>${x.n}</td><td>${x.last7||0}</td></tr>`).join('');
  const ret=(r.items||[]).map(x=>`<tr><td>${x.day}</td><td>${x.n}</td>
  <td>${x.d1==null?'<span class="mut">—</span>':x.d1+' ('+x.d1_pct+'%)'}</td>
  <td>${x.d7==null?'<span class="mut">—</span>':x.d7+' ('+x.d7_pct+'%)'}</td></tr>`).join('');
- $('#m').innerHTML=`<div class="grid g2">
+ $('#m').innerHTML=`<div class="card"><h2>Приглашения</h2><div class="grid g3">
+ ${kpi('Отправлено ссылок',rf.invites,'приглашений заведено')}
+ ${kpi('Дошли до дела',rf.activated,'добавили первое слово')}
+ ${kpi('Наград выдано',rf.rewarded,'+7 дней Plus пригласившим')}</div>
+ <p class="mut">Награда начисляется только после первого слова в колоде, потолок — 10 наград на человека.</p></div>
+ <div class="grid g2">
  <div class="card"><h2>Откуда пришли</h2>
  <table><tr><th>Источник</th><th>Всего</th><th>За 7 дней</th></tr>${src||'<tr><td colspan=3 class="mut">нет данных</td></tr>'}</table>
  <p class="mut">Ссылка с меткой: <code>https://t.me/EngXbot?start=channel_a</code><br>
@@ -502,6 +507,8 @@ class Handler(BaseHTTPRequestHandler):
                     kind=(qs.get("kind") or [""])[0],
                     status=(qs.get("status") or [""])[0],
                     offset=int((qs.get("p") or ["0"])[0]) * 100))
+            if p == "/api/referrals":
+                return self._json(analytics.referral_overview())
             if p == "/api/sources":
                 return self._json(analytics.growth_sources())
             if p == "/api/retention":
