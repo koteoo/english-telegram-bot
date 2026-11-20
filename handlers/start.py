@@ -15,11 +15,11 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
     current_state = await state.get_state()
     if current_state == "TranslateState:waiting_for_text":
         await message.answer(
-            "🔄 <b>Режим перевода активен</b>\n\n"
-            "✍️ Введите слово или фразу для перевода.\n"
-            "Можете переводить несколько слов подряд.\n\n"
-            "Для выхода нажмите 🏠 Main menu или /cancel",
-            parse_mode="HTML",
+        "🦎 Привет! Я <b>Gecko</b> — ваш репетитор английского.\n\n"
+        "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
+        "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
+        "🆓 Каждый день бесплатно · 💠 без лимитов: /premium · 🎁 друг в подарок: /invite",
+        parse_mode="HTML",
             reply_markup=translate_menu_kb(),
         )
         return
