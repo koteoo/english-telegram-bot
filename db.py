@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS referrals (
     invitee_id   INTEGER NOT NULL UNIQUE,
     created_at   TEXT NOT NULL,
     activated_at TEXT,
-    rewarded_at  TEXT
+    rewarded_at  TEXT,
+    notified_at  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ref_inviter ON referrals(inviter_id);
 """
@@ -142,6 +143,11 @@ class Database:
         await self._db.executescript(_FEEDBACK_SCHEMA)
         await self._db.executescript(_REFERRAL_SCHEMA)
         # миграция: источник прихода (для уже существующих — direct)
+        cur = await self._db.execute("PRAGMA table_info(referrals)")
+        rcols = {r[1] for r in await cur.fetchall()}
+        if rcols and "notified_at" not in rcols:
+            await self._db.execute("ALTER TABLE referrals ADD COLUMN notified_at TEXT")
+            await self._db.commit()
         cur = await self._db.execute("PRAGMA table_info(users)")
         cols = {r[1] for r in await cur.fetchall()}
         if "start_source" not in cols:
@@ -214,6 +220,11 @@ class Database:
             (user_id, word, translation, example, _now().isoformat()),
         )
         await self._db.commit()
+        # единственная точка входа для всех пяти сценариев добавления слова
+        try:
+            await self.activate_referral(user_id)
+        except Exception:  # noqa: BLE001 — награда не должна ломать добавление слова
+            pass
         return True
 
     async def due_cards(self, user_id: int, level: str, limit: int = 10) -> list[CardItem]:
@@ -639,3 +650,66 @@ class Database:
                FROM referrals WHERE inviter_id = ?""", (user_id,))
         row = await cur.fetchone()
         return {"total": row[0] or 0, "active": row[1] or 0, "rewarded": row[2] or 0}
+
+    async def extend_plan(self, user_id: int, days: int) -> str | None:
+        """Продлить Plus. Бессрочный доступ остаётся бессрочным."""
+        assert self._db
+        tier, exp = await self.get_plan(user_id)
+        if tier == "plus" and exp is None:
+            return None
+        base = _now()
+        if tier == "plus" and exp:
+            try:
+                cur_exp = dt.datetime.fromisoformat(exp)
+                if cur_exp > base:
+                    base = cur_exp
+            except ValueError:
+                pass
+        new_exp = (base + dt.timedelta(days=days)).isoformat()
+        await self._db.execute(
+            """INSERT INTO plans (user_id, tier, expires_at) VALUES (?, 'plus', ?)
+               ON CONFLICT(user_id) DO UPDATE SET tier='plus', expires_at=excluded.expires_at""",
+            (user_id, new_exp))
+        await self._db.commit()
+        return new_exp
+
+    async def activate_referral(self, invitee_id: int, inviter_days: int = 7,
+                                invitee_days: int = 3, max_rewards: int = 10) -> dict | None:
+        """Провести приглашение по факту первого слова. Повторный вызов ничего не даёт."""
+        assert self._db
+        cur = await self._db.execute(
+            "SELECT id, inviter_id FROM referrals WHERE invitee_id=? AND activated_at IS NULL",
+            (invitee_id,))
+        row = await cur.fetchone()
+        if not row:
+            return None
+        rid, inviter = row[0], row[1]
+        now = _now().isoformat()
+        await self._db.execute("UPDATE referrals SET activated_at=? WHERE id=?", (now, rid))
+        cur = await self._db.execute(
+            "SELECT COUNT(*) FROM referrals WHERE inviter_id=? AND rewarded_at IS NOT NULL",
+            (inviter,))
+        used = (await cur.fetchone())[0]
+        rewarded = used < max_rewards
+        if rewarded:
+            await self._db.execute("UPDATE referrals SET rewarded_at=? WHERE id=?", (now, rid))
+        await self._db.commit()
+        await self.extend_plan(invitee_id, invitee_days)
+        if rewarded:
+            await self.extend_plan(inviter, inviter_days)
+        return {"id": rid, "inviter": inviter, "rewarded": rewarded,
+                "inviter_days": inviter_days if rewarded else 0, "invitee_days": invitee_days}
+
+    async def pending_referral_notifications(self, limit: int = 20) -> list[dict]:
+        assert self._db
+        cur = await self._db.execute(
+            """SELECT id, inviter_id, invitee_id, rewarded_at FROM referrals
+               WHERE activated_at IS NOT NULL AND notified_at IS NULL LIMIT ?""", (limit,))
+        return [{"id": r[0], "inviter": r[1], "invitee": r[2], "rewarded": r[3] is not None}
+                for r in await cur.fetchall()]
+
+    async def mark_referral_notified(self, rid: int) -> None:
+        assert self._db
+        await self._db.execute("UPDATE referrals SET notified_at=? WHERE id=?",
+                               (_now().isoformat(), rid))
+        await self._db.commit()
