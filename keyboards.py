@@ -161,7 +161,23 @@ def add_word_kb() -> ReplyKeyboardMarkup:
     )
 
 
-def notify_kb(enabled: bool, hour: int) -> InlineKeyboardMarkup:
+def notify_tz_kb(current: int) -> InlineKeyboardMarkup:
+    """Выбор часового пояса для напоминаний."""
+    offsets = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    rows, row = [], []
+    for o in offsets:
+        row.append(InlineKeyboardButton(
+            text=("✅ " if o == current else "") + f"+{o}",
+            callback_data=f"notify:tz{o}"))
+        if len(row) == 4:
+            rows.append(row); row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="notify:back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def notify_kb(enabled: bool, hour: int, tz: int = 5) -> InlineKeyboardMarkup:
     """Выбор часа напоминания и переключатель. Часы внутри дневного окна."""
     hours = [9, 12, 15, 18, 20]
     rows = [[InlineKeyboardButton(
@@ -172,6 +188,8 @@ def notify_kb(enabled: bool, hour: int) -> InlineKeyboardMarkup:
         text="🔕 Выключить" if enabled else "🔔 Включить",
         callback_data="notify:toggle",
     )])
+    rows.append([InlineKeyboardButton(text=f"🌍 Часовой пояс: UTC{tz:+d}",
+                                      callback_data="notify:tz")])
     rows.append([InlineKeyboardButton(text="✖️ Закрыть", callback_data="notify:close")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

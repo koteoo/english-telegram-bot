@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb, goals_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb, goals_kb, notify_tz_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -556,11 +556,11 @@ async def add_suggested_word(cb: CallbackQuery, db: Database) -> None:
     )
 
 
-def _notify_text(enabled: bool, hour: int) -> str:
+def _notify_text(enabled: bool, hour: int, tz: int = 5) -> str:
     state = f"включены, в {hour:02d}:00" if enabled else "выключены"
     return (
         "🔔 <b>Напоминания о повторении</b>\n"
-        f"Сейчас: {state} (время МСК).\n\n"
+        f"Сейчас: {state} (ваш пояс UTC{tz:+d}).\n\n"
         "Напомню не чаще раза в день и только если есть слова к повторению. "
         "Если вы уже позанимались — не потревожу."
     )
@@ -568,17 +568,21 @@ def _notify_text(enabled: bool, hour: int) -> str:
 
 @router.message(F.text == "🔔 Напоминания")
 async def notify_settings(message: Message, db: Database) -> None:
-    enabled, hour = await db.get_notify_prefs(message.from_user.id)
+    uid = message.from_user.id
+    enabled, hour = await db.get_notify_prefs(uid)
+    tz = await db.get_notify_tz(uid)
     await message.answer(
-        _notify_text(enabled, hour), parse_mode="HTML",
-        reply_markup=notify_kb(enabled, hour),
+        _notify_text(enabled, hour, tz), parse_mode="HTML",
+        reply_markup=notify_kb(enabled, hour, tz),
     )
 
 
 @router.callback_query(F.data.startswith("notify:"))
 async def notify_change(call: CallbackQuery, db: Database) -> None:
     from aiogram.exceptions import TelegramBadRequest
-    enabled, hour = await db.get_notify_prefs(call.from_user.id)
+    uid = call.from_user.id
+    enabled, hour = await db.get_notify_prefs(uid)
+    tz = await db.get_notify_tz(uid)
     action = call.data.split(":", 1)[1]
     if action == "close":
         await call.answer()
@@ -587,21 +591,37 @@ async def notify_change(call: CallbackQuery, db: Database) -> None:
         except TelegramBadRequest:
             pass
         return
-    if action == "toggle":
+    if action == "tz":
+        await call.answer()
+        await call.message.edit_text(
+            "🌍 Ваш часовой пояс — напоминание придёт в выбранный час по вашему времени.",
+            reply_markup=notify_tz_kb(tz),
+        )
+        return
+    if action == "back":
+        await call.answer()
+    elif action.startswith("tz") and action[2:].isdigit():
+        tz = int(action[2:])
+        await db.set_notify_tz(uid, tz)
+        await call.answer(f"Пояс UTC{tz:+d}")
+    elif action == "toggle":
         enabled = not enabled
+        await db.set_notify_prefs(uid, enabled, hour)
+        await call.answer("Сохранено")
     elif action.startswith("h") and action[1:].isdigit():
-        hour = int(action[1:])
-        enabled = True
-    await db.set_notify_prefs(call.from_user.id, enabled, hour)
-    await call.answer("Сохранено")
+        hour, enabled = int(action[1:]), True
+        await db.set_notify_prefs(uid, enabled, hour)
+        await call.answer("Сохранено")
+    else:
+        await call.answer()
+        return
     try:
         await call.message.edit_text(
-            _notify_text(enabled, hour), parse_mode="HTML",
-            reply_markup=notify_kb(enabled, hour),
+            _notify_text(enabled, hour, tz), parse_mode="HTML",
+            reply_markup=notify_kb(enabled, hour, tz),
         )
     except TelegramBadRequest:
-        pass  # сообщение не изменилось — это нормально
-
+        pass  # сообщение не изменилось
 
 class PlacementState(StatesGroup):
     in_test = State()

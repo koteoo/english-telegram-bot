@@ -63,10 +63,12 @@ async def auto_review_loop(bot: Bot, db: Database) -> None:
                 AUTO_REVIEW_INTERVAL, NOTIFY_HOUR_FROM, NOTIFY_HOUR_TO, NOTIFY_TZ_OFFSET)
     while True:
         try:
-            hour = (datetime.now(timezone.utc).hour + NOTIFY_TZ_OFFSET) % 24
-            if NOTIFY_HOUR_FROM <= hour < NOTIFY_HOUR_TO:
-                users = await db.users_with_due_cards(limit=200)
-                for uid in users:
+            utc_hour = datetime.now(timezone.utc).hour
+            users = await db.users_with_due_cards(limit=200)
+            for uid in users:
+                tz = await db.get_notify_tz(uid)   # пояс каждого пользователя
+                hour = (utc_hour + tz) % 24
+                if NOTIFY_HOUR_FROM <= hour < NOTIFY_HOUR_TO:
                     await _ping_user(bot, db, uid, hour)
                     await asyncio.sleep(0.5)  # мягкий rate-limit
         except asyncio.CancelledError:
