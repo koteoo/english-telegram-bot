@@ -308,6 +308,7 @@ async function userCard(id){const d=await api('/api/user/'+id);
 
 // ---- Обращения
 function kindRu(k){return {question:'❓ Вопрос',idea:'💡 Предложение',complaint:'⚠️ Жалоба',bug:'🐞 Ошибка'}[k]||k}
+async function fbSet(id,st){const r=await fetch('/api/feedback.status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,status:st})});const j=await r.json();if(j.ok){fbPage(0)}else{alert(j.error||'ошибка')}}
 async function fbPage(page=0){const f=new URLSearchParams({kind:$('#fk')?.value||'',status:$('#fs')?.value??'new',p:String(page)});
  const d=await api('/api/feedback?'+f);
  const rows=d.items.map(x=>`<tr><td>#${x.id}</td>
@@ -315,16 +316,17 @@ async function fbPage(page=0){const f=new URLSearchParams({kind:$('#fk')?.value|
  <td><a class="tx" href="#" onclick="route('users');setTimeout(()=>userCard(${x.user_id}),300);return false">${x.user_id}</a></td>
  <td>${kindRu(x.kind)}</td><td>${tierPill(x.tier)}</td>
  <td>${x.status=='new'?'<span class="pill warn">новое</span>':'<span class="pill ok">обработано</span>'}</td>
- <td style="max-width:520px;white-space:pre-wrap">${esc(x.text)}</td></tr>`).join('');
+ <td style="max-width:520px;white-space:pre-wrap">${esc(x.text)}</td>
+ <td>${x.status=='new'?`<button class="sec" onclick="fbSet(${x.id},'done')">✓ обработано</button>`:`<button class="sec" onclick="fbSet(${x.id},'new')">↩ вернуть</button>`}</td></tr>`).join('');
  $('#m').innerHTML=`<div class="card"><div class="row">
  <select id="fk"><option value="">все типы</option>${['question','idea','complaint','bug'].map(k=>`<option value="${k}" ${$('#fk')?.value==k?'selected':''}>${kindRu(k)}</option>`).join('')}</select>
  <select id="fs"><option value="new" ${($('#fs')?.value??'new')=='new'?'selected':''}>новые</option><option value="" ${$('#fs')?.value===''?'selected':''}>все</option><option value="done" ${$('#fs')?.value=='done'?'selected':''}>обработанные</option></select>
  <button onclick="fbPage(0)">Показать</button>
  <span class="mut">всего: ${d.total} · новых: ${d.new}</span></div>
- <div style="overflow:auto"><table><tr><th>№</th><th>Когда (UTC)</th><th>ID</th><th>Тип</th><th>Тариф</th><th>Статус</th><th>Текст</th></tr>${rows||'<tr><td colspan=7 class="mut">обращений нет</td></tr>'}</table></div>
+ <div style="overflow:auto"><table><tr><th>№</th><th>Когда (UTC)</th><th>ID</th><th>Тип</th><th>Тариф</th><th>Статус</th><th>Текст</th><th>Действие</th></tr>${rows||'<tr><td colspan=8 class="mut">обращений нет</td></tr>'}</table></div>
  <div class="row" style="margin-top:10px">${page>0?'<button class="sec" onclick="fbPage('+(page-1)+')">← назад</button>':''}
  ${d.total>(page+1)*100?'<button class="sec" onclick="fbPage('+(page+1)+')">вперёд →</button>':''}</div>
- <p class="mut">Панель читает базу только на чтение — статусы из браузера не меняются.</p></div>`;}
+ <p class="mut">База открыта на чтение. Единственное исключение — смена статуса обращения: один UPDATE по таблице feedback, другие таблицы панель не меняет.</p></div>`;}
 // ---- Графики
 async function chartsPage(){const g=await api('/api/growth?days=30'),a=await api('/api/activity?days=14'),b=await api('/api/business');
  $('#m').innerHTML=`<div class="grid g2"><div class="card"><h2>Рост базы и DAU (30 дней)</h2><canvas id="cg"></canvas></div>
@@ -535,6 +537,9 @@ class Handler(BaseHTTPRequestHandler):
     # --- API POST ---
     def _api_post(self, p: str, body: dict):
         try:
+            if p == "/api/feedback.status":
+                return self._json(analytics.set_feedback_status(
+                    int(body.get("id", 0)), str(body.get("status", ""))))
             if p == "/api/query":
                 return self._json(analytics.run_query(body.get("sql", "")))
             if p == "/api/service":

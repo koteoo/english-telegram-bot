@@ -459,3 +459,29 @@ def feedback_list(kind: str = "", status: str = "", limit: int = 100,
         return {"total": 0, "items": [], "by_kind": [], "new": 0, "error": str(e)}
     finally:
         conn.close()
+
+
+def set_feedback_status(fid: int, status: str, path: str | None = None) -> dict:
+    """ЕДИНСТВЕННАЯ операция записи в панели: статус обращения.
+
+    Все остальные запросы идут через _connect() в режиме mode=ro.
+    Здесь открывается mode=rw, но выполняется ровно один UPDATE по feedback.
+    """
+    if status not in ("new", "done"):
+        return {"ok": False, "error": "недопустимый статус"}
+    p = path or default_db_path()
+    conn = sqlite3.connect(f"file:{Path(p).as_posix()}?mode=rw", uri=True, timeout=5)
+    try:
+        cur = conn.execute(
+            "UPDATE feedback SET status=?, handled_at=? WHERE id=?",
+            (status,
+             dt.datetime.now(dt.timezone.utc).isoformat() if status == "done" else None,
+             int(fid)))
+        conn.commit()
+        if cur.rowcount == 0:
+            return {"ok": False, "error": "обращение не найдено"}
+        return {"ok": True, "id": int(fid), "status": status}
+    except sqlite3.Error as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        conn.close()

@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb, goals_kb, notify_tz_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb, goals_kb, notify_tz_kb, level_sub_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -509,7 +509,7 @@ async def choose_level(message: Message, db: Database) -> None:
         "Пройдите тест — он поднимается по ступеням A1–C2 и останавливается "
         "там, где начинаются ошибки. Или выберите уровень вручную.",
         parse_mode="HTML",
-        reply_markup=level_menu_kb(),
+        reply_markup=level_sub_kb(),
     )
 
 
@@ -655,15 +655,48 @@ async def _send_question(msg: Message, state: FSMContext, db: Database, uid: int
 
 
 @router.callback_query(F.data.startswith("plc:"))
-async def placement_start(call: CallbackQuery, state: FSMContext, db: Database) -> None:
+async def _begin_placement(message: Message, state: FSMContext, db: Database,
+                           user_id: int, mode: str) -> None:
+    """Общий запуск теста: и из подменю, и со старой inline-кнопки."""
     import random
     import placement
-    mode = call.data.split(":", 1)[1]
     ids = placement.QUICK if mode == "quick" else placement.FULL
     await state.set_state(PlacementState.in_test)
     await state.update_data(ids=list(ids), pos=0, answers=[], seed=random.randint(1, 10**6))
+    await _send_question(message, state, db, user_id)
+
+
+async def placement_start(call: CallbackQuery, state: FSMContext, db: Database) -> None:
+    mode = call.data.split(":", 1)[1]
     await call.answer()
-    await _send_question(call.message, state, db, call.from_user.id)
+    await _begin_placement(call.message, state, db, call.from_user.id, mode)
+
+
+@router.message(F.text == "🎯 Пройти тест")
+async def level_full_test(message: Message, state: FSMContext, db: Database) -> None:
+    await _begin_placement(message, state, db, message.from_user.id, "full")
+
+
+@router.message(F.text == "⚡ Быстрый тест")
+async def level_quick_test(message: Message, state: FSMContext, db: Database) -> None:
+    await _begin_placement(message, state, db, message.from_user.id, "quick")
+
+
+@router.message(F.text == "🎓 Выбрать уровень")
+async def level_manual(message: Message) -> None:
+    await message.answer(
+        "🎓 Выберите рабочий уровень вручную. Тест точнее, но выбор тоже работает.",
+        reply_markup=levels_kb(),
+    )
+
+
+@router.message(F.text == "🧭 Цель обучения")
+async def level_goal(message: Message, db: Database) -> None:
+    prof = await db.get_profile(message.from_user.id)
+    await message.answer(
+        "🧭 Зачем вам английский? Цель влияет на лексику и примеры в разговоре.",
+        reply_markup=goals_kb(prof["goal"]),
+    )
 
 
 @router.callback_query(PlacementState.in_test, F.data.startswith("plca:"))

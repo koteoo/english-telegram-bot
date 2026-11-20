@@ -248,3 +248,15 @@ def help_menu_kb() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True,
     )
+
+
+def level_sub_kb() -> ReplyKeyboardMarkup:
+    """Подменю уровня: тесты, ручной выбор, цель обучения."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🎯 Пройти тест"), KeyboardButton(text="⚡ Быстрый тест")],
+            [KeyboardButton(text="🎓 Выбрать уровень"), KeyboardButton(text="🧭 Цель обучения")],
+            [KeyboardButton(text="🏠 Main menu")],
+        ],
+        resize_keyboard=True,
+    )
