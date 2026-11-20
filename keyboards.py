@@ -209,18 +209,6 @@ def notify_kb(enabled: bool, hour: int, tz: int = 5) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def level_menu_kb() -> InlineKeyboardMarkup:
-    """Экран уровня: тесты и ручной выбор."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧪 Быстрый тест (8 вопросов)", callback_data="plc:quick")],
-        [InlineKeyboardButton(text="📝 Полный тест (20 вопросов)", callback_data="plc:full")],
-        [InlineKeyboardButton(text=LEVEL_NAMES["beginner"], callback_data="lvl:beginner"),
-         InlineKeyboardButton(text=LEVEL_NAMES["intermediate"], callback_data="lvl:intermediate")],
-        [InlineKeyboardButton(text=LEVEL_NAMES["advanced"], callback_data="lvl:advanced")],
-        [InlineKeyboardButton(text="🎯 Цель обучения", callback_data="goal:menu")],
-    ])
-
-
 def placement_kb(opts: list[str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=o, callback_data=f"plca:{i}")]

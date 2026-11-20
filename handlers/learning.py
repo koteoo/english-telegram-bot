@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, level_menu_kb, placement_kb, goals_kb, notify_tz_kb, level_sub_kb
+from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, placement_kb, goals_kb, notify_tz_kb, level_sub_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()

@@ -102,9 +102,8 @@ async def _maybe_voice(message: Message, state: FSMContext, db: Database, text: 
         return
     uid = message.from_user.id
     tier, _ = await db.get_plan(uid)
-    cap = (LIMITS.plus_voice_replies_per_day if tier == "plus"
-           else LIMITS.free_voice_replies_per_day)
-    if not await db.within_limit(uid, "voice_out", cap):
+    # Plus без лимита; Free ограничен суточной квотой
+    if tier != "plus" and not await db.within_limit(uid, "voice_out", LIMITS.free_voice_replies_per_day):
         return
     import speech
     if not speech.tts_available():
@@ -284,14 +283,12 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
 
     uid = message.from_user.id
     tier, _ = await db.get_plan(uid)
-    cap = (LIMITS.plus_voice_inputs_per_day if tier == "plus"
-           else LIMITS.free_voice_inputs_per_day)
-    if not await db.within_limit(uid, "voice_in", cap):
+    cap = LIMITS.free_voice_inputs_per_day
+    if tier != "plus" and not await db.within_limit(uid, "voice_in", cap):
         used = await db.get_usage(uid, "voice_in")
-        tail = ("Лимит обновится завтра." if tier == "plus"
-                else "Больше — на 💠 Plus: /premium")
         await message.answer(
-            f"📭 Лимит голосовых на сегодня исчерпан ({used}/{cap}).\n" + tail,
+            f"📭 Лимит голосовых на сегодня исчерпан ({used}/{cap}).\n"
+            "Без лимита — на 💠 Plus: /premium",
             reply_markup=await _chat_kb(state),
         )
         return
