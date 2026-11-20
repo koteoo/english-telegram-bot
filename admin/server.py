@@ -246,7 +246,7 @@ function shell(active){$('#app').innerHTML=`<header><h1>🤖 English Bot · Admi
 <nav>${NAV.map(([k,l])=>`<a href='#${k}' class="${k==active?'on':''}" onclick="route('${k}')">${l}</a>`).join('')}</nav>
 <span id="botstate" class="pill"></span></header><main id="m"></main>`;}
 function setDot(s){$('#botstate').innerHTML=s.bot_up?`<span class="dot" style="background:var(--ok)"></span>${s.bot_state} · ${s.bot_service}`:`<span class="dot" style="background:var(--bad)"></span>${s.bot_state||'?'}`}
-async function route(k){shell(k);({dash,users,fbPage,chartsPage,sql,files,logs,sys})[k]?.();
+async function route(k){shell(k);({dash:dash,users:users,fb:fbPage,charts:chartsPage,sql:sql,files:files,logs:logs,sys:sys})[k]?.();
  try{setDot(await api('/api/status'))}catch(e){}}
 // ---- Дашборд
 async function dash(){const o=await api('/api/business');
