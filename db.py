@@ -362,7 +362,8 @@ class Database:
         return row[0] if row else 0
 
     async def within_limit(self, user_id: int, kind: str, limit: int) -> bool:
-        return True  # ВРЕМЕННО: лимиты отключены
+        """Free ограничен суточными лимитами, Plus — без ограничений."""
+        assert self._db
         tier, _ = await self.get_plan(user_id)
         if tier != "free":
             return True
