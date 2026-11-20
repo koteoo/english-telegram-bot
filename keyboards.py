@@ -20,7 +20,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
             # Вернуть строку ниже, когда у раздела появится своё содержание.
             # [KeyboardButton(text="💬 Topics"), KeyboardButton(text="🗣 Chat with me")],
             [KeyboardButton(text="🗣 Chat with me")],
-            [KeyboardButton(text="💎 Premium"), KeyboardButton(text="❓ Help")],
+            [KeyboardButton(text="💎 Тарифы"), KeyboardButton(text="❓ Help")],
             [KeyboardButton(text="🔄 Translate"), KeyboardButton(text="🔔 Напоминания")],
         ],
         resize_keyboard=True,

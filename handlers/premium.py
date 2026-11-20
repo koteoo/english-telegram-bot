@@ -57,7 +57,8 @@ LIMIT_TXT_TOPICS = str(LIMITS.open_topics_free)
 LIMIT_TXT_CHAT = str(LIMITS.free_chat_messages_per_day)
 
 
-@router.message(F.text == "💎 Premium")
+@router.message(F.text.in_({"💎 Тарифы", "💎 Premium"}))
+@router.message(Command("plans"))
 @router.message(Command("premium"))
 async def show_premium(message: Message, db: Database) -> None:
     plan, expires_at = await db.get_plan(message.from_user.id)
