@@ -249,21 +249,27 @@ function setDot(s){$('#botstate').innerHTML=s.bot_up?`<span class="dot" style="b
 async function route(k){shell(k);({dash,users,chartsPage,sql,files,logs,sys})[k]?.();
  try{setDot(await api('/api/status'))}catch(e){}}
 // ---- Дашборд
-async function dash(){const o=await api('/api/overview');
+async function dash(){const o=await api('/api/business');
  $('#m').innerHTML=`<div class="grid g6">
- ${kpi('Пользователей',o.users_total,'+'+(o.users_today||0)+' сегодня')}
+ ${kpi('Пользователей',o.users_total,'+'+(o.users_today||0)+' сегодня · +'+(o.users_week||0)+' за 7 дней')}
  ${kpi('Активны сегодня',o.active_today,(o.active_week||0)+' за 7 дней')}
- ${kpi('Новых за неделю',o.users_week||0,'')}
- ${kpi('Выучено слов',(o.learned_total||0).toLocaleString(),'суммарно')}
- ${kpi('Карточек в базах',o.cards_total||0,(o.cards_due||0)+' к повтору сейчас')}
- ${kpi('Платящих',o.paid_users||0,'plus+premium')}
+ ${kpi('Платящих сейчас',o.paying_now,'конверсия '+(o.conversion_pct||0)+'%')}
+ ${kpi('Выручка всего',(o.revenue_total||0)+' ⭐',(o.payments_count||0)+' оплат')}
+ ${kpi('За 30 дней',(o.revenue_30d||0)+' ⭐','сегодня '+(o.revenue_today||0)+' ⭐')}
+ ${kpi('Средний чек',(o.avg_check||0)+' ⭐','ARPU '+(o.arpu||0)+' ⭐')}
  </div>
  <div class="grid g2" style="margin-top:14px">
- <div class="card"><h2>Уровни</h2>${bars(o.levels||[],'level','n')}</div>
  <div class="card"><h2>Тарифы</h2>${bars(o.plans||[],'tier','n')}</div>
- <div class="card"><h2>CEFR из профилей</h2>${bars(o.cefr||[],'k','n')}</div>
+ <div class="card"><h2>Выручка по тарифам</h2>${bars(o.revenue_by_tier||[],'tier','stars')}</div>
+ <div class="card"><h2>Подписки истекают за 7 дней</h2>${(o.expiring||[]).length?
+ `<table><tr><th>ID</th><th>тариф</th><th>до</th></tr>${o.expiring.map(e=>
+ `<tr><td>${e.user_id}</td><td>${tierPill(e.tier)}</td><td class="mut">${(e.expires_at||'').slice(0,10)}</td></tr>`).join('')}</table>`
+ :'<p class="mut">нет истекающих</p>'}</div>
  <div class="card"><h2>База данных</h2><p class="mut">${o.db_path||''}<br>размер: ${o.db_size_kb??'?'} КБ · снимок: ${o.generated_at||''} UTC</p>
- <button onclick="load('/api/export.sql')">💾 Скачать .sql дамп</button></div></div>`;}
+ <a class="btn" href="/api/export.sql">💾 Скачать .sql дамп</a></div></div>
+ ${o.accounting_since?`<p class="mut">Учёт платежей ведётся с ${String(o.accounting_since).slice(0,10)}. Более ранние оплаты в базе не сохранялись.</p>`
+ :'<p class="warn">Оплат пока не записано: журнал начали вести только что, прошлые платежи в базе отсутствуют.</p>'}`;}
+
 function kpi(t,v,s){return `<div class="card kpi"><span>${t}</span><b>${v??'—'}</b><small class="mut">${s||''}</small></div>`}
 function bars(arr,k,v){if(!arr.length)return '<p class="mut">нет данных</p>';
  const mx=Math.max(...arr.map(a=>a[v]))||1;
@@ -274,36 +280,42 @@ function bars(arr,k,v){if(!arr.length)return '<p class="mut">нет данных
 async function users(page=0){const f=new URLSearchParams({q:$('#uq')?.value||'',plan:$('#up')?.value||'',p:String(page)});
  const d=await api('/api/users?'+f);const rows=d.items.map(u=>`<tr>
  <td><a class="tx" href="#" onclick="userCard(${u.user_id});return false">${u.user_id}</a></td>
- <td>${u.username||''}</td><td>${u.level||''}</td><td>${tierPill(u.tier)}</td>
- <td>${u.deck}</td><td>${u.learned}</td><td>${u.quiz_best}</td>
+ <td>${u.username||''}</td><td>${tierPill(u.tier)}</td>
+ <td>${u.paid_stars||0} ⭐</td><td>${u.payments_n||0}</td>
+ <td class="mut">${(u.expires_at||'—').slice(0,10)}</td>
  <td>${(u.last_active||'—')}</td><td class="mut">${(u.created_at||'').slice(0,10)}</td></tr>`).join('');
  $('#m').innerHTML=`<div class="card"><div class="row">
  <input id="uq" placeholder="ID или @username" value="${$('#uq')?.value||''}">
  <select id="up"><option value="">все тарифы</option>${['free','plus','premium'].map(x=>`<option ${$('#up')?.value==x?'selected':''}>${x}</option>`).join('')}</select>
  <button onclick="users(0)">Найти</button><span class="mut">всего: ${d.total}</span></div>
- <div style="overflow:auto"><table><tr><th>ID</th><th>Username</th><th>Уровень</th><th>Тариф</th><th>Колода</th><th>Выучено</th><th>Квиз max</th><th>Активен</th><th>Регистрация</th></tr>${rows||'<tr><td colspan=9 class="mut">пусто</td></tr>'}</table></div>
+ <div style="overflow:auto"><table><tr><th>ID</th><th>Username</th><th>Тариф</th><th>Оплачено</th><th>Платежей</th><th>Подписка до</th><th>Активен</th><th>Регистрация</th></tr>${rows||'<tr><td colspan=8 class="mut">пусто</td></tr>'}</table></div>
  <div class="row" style="margin-top:10px">${page>0?'<button class="sec" onclick="users('+(page-1)+')">← назад</button>':''}
  ${d.total>(page+1)*100?'<button class="sec" onclick="users('+(page+1)+')">вперёд →</button>':''}</div></div>
  <div id="detail"></div>`;}
+
 function tierPill(t){const c={free:'mut',plus:'warn',premium:'ok'}[t]||'mut';return `<span class="pill ${c}">${t||'free'}</span>`}
 async function userCard(id){const d=await api('/api/user/'+id);
- const boxes=(d.boxes||[]).map(b=>`<div class="row"><span style="min-width:70px">box ${b.box}</span><div style="flex:1;background:#0d1220;border-radius:6px"><div style="width:${100*b.n/Math.max(1,(d.cards||[]).length)}%;background:var(--acc);height:12px;border-radius:6px"></div></div><b>${b.n}</b></div>`).join('');
+ const pays=(d.payments||[]);
  $('#detail').innerHTML=`<div class="card" style="margin-top:14px"><h2>Пользователь ${id} · ${d.user?.username||''} ${tierPill(d.plan?.tier||'free')}</h2>
- <div class="grid g2"><div><h2>Коробки интервалов</h2>${boxes||'<p class="mut">колода пуста</p>'}</div>
- <div><h2>Занятость по дням</h2><table><tr><th>день</th><th>слов</th><th>квиз</th><th>чат</th><th>повторы</th></tr>
- ${(d.usage||[]).slice(0,14).map(u=>`<tr><td>${u.day}</td><td>${u.words??''}</td><td>${u.quiz??''}</td><td>${u.chat??''}</td><td>${u.review??''}</td></tr>`).join('')||'<tr><td colspan=5 class="mut">нет</td></tr>'}</table></div></div>
- <details style="margin-top:10px"><summary class="tx">Слова колоды (${(d.cards||[]).length})</summary>
- <table><tr><th>слово</th><th>перевод</th><th>box</th><th>повтор</th></tr>
- ${(d.cards||[]).slice(0,200).map(c=>`<tr><td>${c.word}</td><td>${c.translation||''}</td><td>${c.box}</td><td class="mut">${(c.next_review||'').slice(0,16)}</td></tr>`).join('')}</table></details></div>`;}
+ <div class="grid g2"><div><h2>Платежи</h2>${pays.length?
+ `<table><tr><th>дата</th><th>тариф</th><th>звёзды</th><th>дней</th></tr>${pays.map(p=>
+ `<tr><td class="mut">${(p.created_at||'').slice(0,10)}</td><td>${p.tier}</td><td>${p.stars} ⭐</td><td>${p.days}</td></tr>`).join('')}</table>`
+ :'<p class="mut">оплат не записано</p>'}</div>
+ <div><h2>Активность по дням</h2><table><tr><th>день</th><th>слов</th><th>квиз</th><th>чат</th><th>повторы</th></tr>
+ ${(d.usage||[]).slice(0,14).map(u=>`<tr><td>${u.day}</td><td>${u.words??''}</td><td>${u.quiz??''}</td><td>${u.chat??''}</td><td>${u.review??''}</td></tr>`).join('')||'<tr><td colspan=5 class="mut">нет</td></tr>'}</table></div></div></div>`;}
+
 // ---- Графики
-async function chartsPage(){const g=await api('/api/growth?days=30'),a=await api('/api/activity?days=14'),w=await api('/api/top_words');
+async function chartsPage(){const g=await api('/api/growth?days=30'),a=await api('/api/activity?days=14'),b=await api('/api/business');
  $('#m').innerHTML=`<div class="grid g2"><div class="card"><h2>Рост базы и DAU (30 дней)</h2><canvas id="cg"></canvas></div>
- <div class="card"><h2>Активность по типам (14 дней)</h2><canvas id="ca"></canvas></div>
- <div class="card"><h2>Топ слов в колодах</h2><div style="max-height:300px;overflow:auto"><table><tr><th>слово</th><th>у скольких</th><th>avg box</th><th>выучили</th></tr>
- ${w.map(x=>`<tr><td>${x.word}</td><td>${x.users}</td><td>${(+x.avg_box).toFixed(1)}</td><td>${x.learned_by}</td></tr>`).join('')}</table></div></div></div>`;
+ <div class="card"><h2>Выручка по дням (30 дней)</h2><canvas id="cr"></canvas></div>
+ <div class="card"><h2>Активность по типам (14 дней)</h2><canvas id="ca"></canvas></div></div>`;
  mkChart('cg',g.map(r=>r.day),[{l:'новые',d:g.map(r=>r.new_users)},{l:'активные',d:g.map(r=>r.active)}]);
- const kinds=[...new Set(a.map(r=>r.kind))];const days=[...new Set(a.map(r=>r.day))].sort();
- mkChart('ca',days,kinds.slice(0,6).map(k=>({l:k,d:days.map(dy=>a.find(r=>r.day==dy&&r.kind==k)?.n||0)})));}
+ const rd=(b.daily||[]);
+ mkChart('cr',rd.map(r=>r.day),[{l:'звёзды',d:rd.map(r=>r.stars)},{l:'оплат',d:rd.map(r=>r.n)}]);
+ const kinds=[...new Set(a.map(r=>r.kind))].filter(k=>['words','quiz','chat','review'].includes(k));
+ const adays=[...new Set(a.map(r=>r.day))].sort();
+ mkChart('ca',adays,kinds.map(k=>({l:k,d:adays.map(dy=>a.find(r=>r.day==dy&&r.kind==k)?.n||0)})));}
+
 function mkChart(id,labels,series){if(charts[id])charts[id].destroy();if(!window.Chart)return;
  charts[id]=new Chart($('#'+id),{type:'line',data:{labels,datasets:series.map((s,i)=>({label:s.l,data:s.d,borderColor:['#4f8cff','#3ecf8e','#ffb454','#ff6b6b','#b48cff','#5fd4d4'][i%6],tension:.3,pointRadius:2}))},options:{plugins:{legend:{labels:{color:'#dbe4f5'}}},scales:{x:{ticks:{color:'#8493ad'}},y:{ticks:{color:'#8493ad'},grid:{color:'#2a3550'}}}}});}
 // ---- SQL

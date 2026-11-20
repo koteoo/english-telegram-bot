@@ -258,6 +258,12 @@ def user_detail(user_id: int, path: str | None = None) -> dict:
         out["profile"] = row("SELECT * FROM user_profile WHERE user_id=?", user_id)
         out["notify"] = row("SELECT * FROM notify_prefs WHERE user_id=?", user_id)
         try:
+            out["payments"] = [dict(r) for r in conn.execute(
+                "SELECT tier, stars, days, created_at FROM payments "
+                "WHERE user_id=? ORDER BY created_at DESC LIMIT 100", (user_id,)).fetchall()]
+        except sqlite3.Error:
+            out["payments"] = []
+        try:
             out["boxes"] = [dict(r) for r in conn.execute(
                 "SELECT box, COUNT(*) n FROM cards WHERE user_id=? GROUP BY box "
                 "ORDER BY box", (user_id,)).fetchall()]
