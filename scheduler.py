@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 from aiogram import Bot
 
 from db import Database
-from keyboards import level_select_cb
 
 logger = logging.getLogger(__name__)
 

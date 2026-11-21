@@ -98,11 +98,9 @@ async def _send_card(message: Message, db: Database, user_id: int) -> bool:
     item = random.choice(pool)
     _card_last[user_id] = item.word
     _card_active[user_id] = (item.word, item.translation, item.example)
-    await message.answer(
-        _word_card(item, hint_only=True),
-        parse_mode="HTML",
-        reply_markup=level_select_cb(level),
-    )
+    # кнопки ответа — в reply-клавиатуре режима карточек;
+    # inline-клавиатура уровня здесь меняла уровень посреди повторения
+    await message.answer(_word_card(item, hint_only=True), parse_mode="HTML")
     return True
 
 
