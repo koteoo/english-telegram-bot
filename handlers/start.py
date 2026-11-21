@@ -1,3 +1,4 @@
+import os
 """Обработчики команд и сообщений."""
 from aiogram import Router, F
 from aiogram.filters import Command, CommandStart, Command
@@ -6,6 +7,14 @@ from aiogram.types import Message
 
 from keyboards import main_menu_kb, translate_menu_kb
 from db import Database
+
+WELCOME_HTML = (
+    "🦎 Привет! Я <b>Gecko</b> — ваш репетитор английского.\n\n"
+    "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
+    "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
+    "🆓 Каждый день бесплатно · 💠 без лимитов — <a href='https://t.me/EngXbot?start=plus'>Plus</a> · 🎁 друг в подарок: /invite",
+)
+
 
 router = Router()
 
@@ -56,10 +65,7 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
             )
 
     await message.answer(
-        "🦎 Привет! Я <b>Gecko</b> — ваш репетитор английского.\n\n"
-        "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
-        "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
-        "🆓 Каждый день бесплатно · 💠 без лимитов — <a href='https://t.me/EngXbot?start=plus'>Plus</a> · 🎁 друг в подарок: /invite",
+        WELCOME_HTML,
         parse_mode="HTML",
         reply_markup=main_menu_kb(),
     )
@@ -72,3 +78,12 @@ async def cmd_global_menu(message: Message, state: FSMContext):
     # Локальный импорт гарантирует, что функция будет найдена
     from keyboards import main_menu_kb
     await message.answer("🏠 Главное меню:", reply_markup=main_menu_kb())
+
+
+@router.message(Command("welcome"))
+async def preview_welcome(message: Message) -> None:
+    """Предпросмотр приветствия — только для владельца."""
+    if message.from_user.id != int(os.getenv("OWNER_TELEGRAM_ID", "0")):
+        return
+    from keyboards import main_menu_kb
+    await message.answer(WELCOME_HTML, parse_mode="HTML", reply_markup=main_menu_kb())

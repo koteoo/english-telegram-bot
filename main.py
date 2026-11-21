@@ -31,16 +31,9 @@ async def main() -> None:
     dp.include_router(chat.router)  # чат
     dp.include_router(translate.router)  # перевод — в самом конце
 
-    await bot.set_my_commands([
-        BotCommand(command="/start", description="Начать"),
-        BotCommand(command="/topics", description="📚 Темы для изучения"),
-        BotCommand(command="/chat", description="🗣 Разговор на английском"),
-        BotCommand(command="/tr", description="🔤 Перевод слова (текст/голос)"),
-        BotCommand(command="/premium", description="💎 Тарифы и оплата Stars"),
-        BotCommand(command="/donate", description="❤️ Поддержать проект"),
-        BotCommand(command="/help", description="Справка"),
-        BotCommand(command="/menu", description="Главное меню"),
-    ])
+    # команды не регистрируем: список в меню дублирует нижнюю клавиатуру,
+    # а пустой список скрывает кнопку у строки ввода
+    await bot.delete_my_commands()
 
     database = Database()
     await database.connect()

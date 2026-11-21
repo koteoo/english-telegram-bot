@@ -473,10 +473,10 @@ async def add_user_word(message: Message, db: Database, state: FSMContext) -> No
 def _topics_line(rows) -> str:
     if not rows:
         return ""
-    import topics as T
+    from data import topics as T
     parts = []
     for tid, n in rows:
-        t = T.get_topic(tid)
+        t = T.TOPIC_BY_ID.get(tid)
         name = t["title"].split(" ", 1)[-1] if t else tid
         parts.append(f"{name} — {n}")
     return "💬 Темы: " + ", ".join(parts) + "\n"
