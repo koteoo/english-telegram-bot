@@ -12,7 +12,7 @@ WELCOME_HTML = (
     "🦎 Привет! Я <b>Gecko</b> — ваш репетитор английского.\n\n"
     "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
     "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
-    "🆓 Каждый день бесплатно · 💠 без лимитов — <a href='https://t.me/EngXbot?start=plus'>Plus</a> · 🎁 друг в подарок: /invite"
+    "🆓 Каждый день бесплатно · 💠 без лимитов — <a href='https://t.me/EngXbot?start=plus'>Plus</a> · 🎁 <a href='https://t.me/EngXbot?start=invite'>друг в подарок</a>"
 )
 
 
@@ -41,13 +41,17 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
     tag = ""
     if len(parts) == 2:
         tag = re.sub(r"[^A-Za-z0-9_-]", "", parts[1])[:32]
-        if tag and tag != "plus":
+        if tag and tag not in ("plus", "invite"):
             source = tag
     is_new = not await db.user_exists(message.from_user.id)
     await db.register_user(message.from_user.id, message.from_user.username, source=source)
     if tag == "plus":
         from handlers.premium import show_premium
         await show_premium(message, db)
+        return
+    if tag == "invite":
+        from handlers.referral import invite_screen
+        await invite_screen(message, db)
         return
     if not is_new:
         await message.answer("🏠 Главное меню:", reply_markup=main_menu_kb())

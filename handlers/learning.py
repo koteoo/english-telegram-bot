@@ -328,6 +328,7 @@ async def quiz_text_hint(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("quiz:"))
 async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> None:
+    import html as _html
     _, level, choice = call.data.split(":")
     await db.incr_usage(call.from_user.id, "quiz")
     text = call.message.text or ""
@@ -346,8 +347,9 @@ async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> N
         _quiz_streak[call.from_user.id] = streak
         record = await db.update_quiz_result(call.from_user.id, streak)
         await call.message.edit_text(
-            f"✅ Верно: <b>{right_word}</b>\n"
-            f"🔥 Серия: <b>{streak}</b>"
+            "✅ <b>Верно</b>\n\n" + _html.escape(text) + "\n\n"
+            + f"Ответ: <b>{_html.escape(right_word)}</b>\n"
+            + f"🔥 Серия: <b>{streak}</b>"
             + ("\n\n🏆 Новый рекорд квиза!" if record else ""),
             parse_mode="HTML",
         )
