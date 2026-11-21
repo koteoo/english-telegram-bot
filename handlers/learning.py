@@ -477,7 +477,7 @@ def _topics_line(rows) -> str:
     parts = []
     for tid, n in rows:
         t = T.TOPIC_BY_ID.get(tid)
-        name = t["title"].split(" ", 1)[-1] if t else tid
+        name = t["title"] if t else tid
         parts.append(f"{name} — {n}")
     return "💬 Темы: " + ", ".join(parts) + "\n"
 
