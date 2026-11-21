@@ -55,8 +55,11 @@ def donate_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def level_select_cb(level: str) -> InlineKeyboardMarkup:
-    """Кнопки под сообщением с карточкой: знаю / не знаю."""
+def review_cb(level: str) -> InlineKeyboardMarkup:
+    """Кнопки ответа под карточкой: знаю / не знаю (callback rev:<level>:<0|1>).
+
+    Прежнее имя level_select_cb вводило в заблуждение: к выбору уровня отношения нет.
+    """
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [

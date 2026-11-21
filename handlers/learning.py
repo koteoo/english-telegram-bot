@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from db import Database
 from data.vocabulary import VOCABULARY, QUIZ_SENTENCES
 from data.quiz_bank import QUIZ_BY_LEVEL
-from keyboards import main_menu_kb, level_select_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, placement_kb, goals_kb, notify_tz_kb, level_sub_kb
+from keyboards import main_menu_kb, review_cb, answer_quiz_cb, levels_kb, LEVEL_NAMES, quiz_menu_kb, flashcards_menu_kb, add_word_kb, notify_kb, placement_kb, goals_kb, notify_tz_kb, level_sub_kb
 from plans import LIMITS, PLAN_NAMES, UPGRADE_HINTS
 
 router = Router()
@@ -98,9 +98,11 @@ async def _send_card(message: Message, db: Database, user_id: int) -> bool:
     item = random.choice(pool)
     _card_last[user_id] = item.word
     _card_active[user_id] = (item.word, item.translation, item.example)
-    # кнопки ответа — в reply-клавиатуре режима карточек;
-    # inline-клавиатура уровня здесь меняла уровень посреди повторения
-    await message.answer(_word_card(item, hint_only=True), parse_mode="HTML")
+    await message.answer(
+        _word_card(item, hint_only=True),
+        parse_mode="HTML",
+        reply_markup=review_cb(level),
+    )
     return True
 
 
