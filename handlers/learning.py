@@ -222,7 +222,7 @@ async def review_callback(call: CallbackQuery, db: Database, state: FSMContext) 
             word = line.replace("🃏", "").strip()
             break
     if not word:
-        await call.answer("Не нашёл карточку 😅", show_alert=True)
+        await call.answer("Не нашёл карточку", show_alert=True)
         return
     new_box = await db.review_card(call.from_user.id, word, correct)
     await db.incr_usage(call.from_user.id, "review")
@@ -337,7 +337,7 @@ async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> N
     if not q:
         q = next((cand for cand in _ALL_QUIZ if cand[0] in text), None)
     if not q:
-        await call.answer("Вопрос не найден 😅", show_alert=True)
+        await call.answer("Вопрос не найден", show_alert=True)
         return
     correct = q[4]
     right_word = q[2] if correct == "A" else q[3]
@@ -346,16 +346,20 @@ async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> N
         _quiz_streak[call.from_user.id] = streak
         record = await db.update_quiz_result(call.from_user.id, streak)
         await call.message.edit_text(
-            f"🎉 Правильно! Ответ: <b>{right_word}</b>.\n"
+            f"✅ Верно: <b>{right_word}</b>\n"
             f"🔥 Серия: <b>{streak}</b>"
             + ("\n\n🏆 Новый рекорд квиза!" if record else ""),
             parse_mode="HTML",
         )
     else:
+        import html as _html
+        chosen = q[2] if choice == "A" else q[3]
         lost = _quiz_streak.pop(call.from_user.id, 0)
         await call.message.edit_text(
-            f"😅 Неверно. Правильный ответ: <b>{right_word}</b>.\n"
-            + (f"Серия из {lost} прервана.\n" if lost else ""),
+            "❌ <b>Неверно</b>\n\n" + _html.escape(text) + "\n\n"
+            + f"Ваш ответ: {_html.escape(chosen)}\n"
+            + f"Правильный: <b>{_html.escape(right_word)}</b>\n"
+            + (f"\nСерия из {lost} прервана." if lost else ""),
             parse_mode="HTML",
         )
     await call.answer()

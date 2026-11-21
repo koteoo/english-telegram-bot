@@ -36,8 +36,6 @@ def premium_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text=f"💠 Plus — {PLUS_STARS} ⭐ / 30 дней",
                                   callback_data="buy:plus")],
-            [InlineKeyboardButton(text="❤️ Поддержать проект (донат)",
-                                  callback_data="donate:menu")],
         ]
     )
 
