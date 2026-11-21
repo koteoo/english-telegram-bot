@@ -9,11 +9,14 @@ from keyboards import main_menu_kb, translate_menu_kb
 from db import Database
 
 WELCOME_HTML = (
-    "🦎 Привет! Я <b>Gecko</b> — ваш репетитор английского.\n\n"
+    "🦎 Привет! Я <b>Gecko</b> — ваш репетитор по английскому.\n\n"
     "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
     "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
-    "🆓 Каждый день бесплатно · 💠 без лимитов — <a href='https://t.me/EngXbot?start=plus'>Plus</a> · 🎁 <a href='https://t.me/EngXbot?start=invite'>друг в подарок</a>"
+    '🆓 Каждый день бесплатно · 💠 без лимитов — '
+    '<a href="https://t.me/EngXbot?start=plus">Plus</a>'
+    ' · 🎁 <a href="https://t.me/EngXbot?start=invite">друг в подарок</a>'
 )
+
 
 
 router = Router()
