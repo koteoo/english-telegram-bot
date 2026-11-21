@@ -46,12 +46,15 @@ async def _ping_user(bot: Bot, db: Database, user_id: int, local_hour: int) -> N
     due = await db.due_cards(user_id, level, limit=cap)
     if not due:
         return
-    lines = ["🤖 <b>Время повторить слова!</b> Нажми кнопку под каждым словом 👇", ""]
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    lines = ["🤖 <b>Время повторить слова!</b>", ""]
     for item in due:
-        lines.append(f"🃏 <b>{item.word}</b> — как переводится?")
+        lines.append(f"🃏 <b>{item.word}</b>")
+    lines += ["", "Нажмите «Повторить» — пришлю карточки по одной, с переводом и примером."]
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🃏 Повторить", callback_data="card:start")]])
     try:
-        await bot.send_message(user_id, "\n".join(lines), parse_mode="HTML",
-                               reply_markup=level_select_cb(level))
+        await bot.send_message(user_id, "\n".join(lines), parse_mode="HTML", reply_markup=kb)
     except Exception as exc:  # noqa: BLE001 (пользователь мог заблокировать бота)
         logger.info("Auto-review ping skipped for %s: %s", user_id, exc)
     # отмечаем попытку в любом случае: заблокированного бота не долбим каждые 15 минут

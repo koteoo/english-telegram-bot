@@ -189,6 +189,28 @@ def _find_word_info(word: str):
     return None, None
 
 
+@router.callback_query(F.data == "card:start")
+async def start_review_from_ping(call: CallbackQuery, db: Database, state: FSMContext) -> None:
+    """Запуск повторения из напоминания планировщика."""
+    uid = call.from_user.id
+    level = await db.get_level(uid)
+    await call.answer()
+    if not await db.due_cards(uid, level, limit=1):
+        await state.clear()
+        await call.message.answer(
+            "🎉 Повторять пока нечего — всё повторено.", reply_markup=main_menu_kb())
+        return
+    await state.set_state(FlashcardsState.in_review)
+    await call.message.answer(
+        "🃏 <b>Режим карточек</b>\n\n"
+        "Вспомни перевод, затем нажми «✅ I know it» или «❌ Don't know».\n"
+        "Выход — 🏠 Main menu или /cancel",
+        parse_mode="HTML", reply_markup=flashcards_menu_kb(),
+    )
+    if not await _send_card(call.message, db, uid):
+        await state.clear()
+
+
 @router.callback_query(F.data.startswith("rev:"))
 async def review_callback(call: CallbackQuery, db: Database, state: FSMContext) -> None:
     _, level, correct_flag = call.data.split(":")
