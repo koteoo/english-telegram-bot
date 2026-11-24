@@ -56,8 +56,6 @@ async def _ping_user(bot: Bot, db: Database, user_id: int, local_hour: int) -> N
         await bot.send_message(user_id, "\n".join(lines), parse_mode="HTML", reply_markup=kb)
         from review_queue import set_queue
         set_queue(user_id, [i.word for i in due])
-        from review_queue import set_queue
-        set_queue(user_id, [i.word for i in due])
     except Exception as exc:  # noqa: BLE001 (пользователь мог заблокировать бота)
         logger.info("Auto-review ping skipped for %s: %s", user_id, exc)
     # отмечаем попытку в любом случае: заблокированного бота не долбим каждые 15 минут
