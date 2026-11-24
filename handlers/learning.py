@@ -86,16 +86,28 @@ async def word_of_day(message: Message, db: Database) -> None:
 async def _send_card(message: Message, db: Database, user_id: int) -> bool:
     """Показать следующую карточку. False — повторять нечего."""
     level = await db.get_level(user_id)
-    due = await db.due_cards(user_id, level, limit=10)
+    due = await db.due_cards(user_id, level, limit=100)
     if not due:
         await message.answer(
             "🎉 Повторять пока нечего.",
             reply_markup=main_menu_kb(),
         )
         return False
-    last = _card_last.get(user_id)
-    pool = [c for c in due if c.word != last] or due
-    item = random.choice(pool)
+    # сначала слова, обещанные в напоминании, потом остальные просроченные
+    from review_queue import take_next
+    by_word = {c.word: c for c in due}
+    item = None
+    while True:
+        w = take_next(user_id)
+        if not w:
+            break
+        if w in by_word:
+            item = by_word[w]
+            break
+    if item is None:
+        last = _card_last.get(user_id)
+        pool = [c for c in due if c.word != last] or due
+        item = random.choice(pool)
     _card_last[user_id] = item.word
     _card_active[user_id] = (item.word, item.translation, item.example)
     await message.answer(
