@@ -94,7 +94,8 @@ async def process_translation(message: Message, text: str, db: Database):
     direction = "ru-en" if has_cyr else "en-ru"
     import html as _html
     # фраза или предложение — переводим целиком, а не по словарю
-    is_text = (len(text.split()) >= 3 or len(text) > 40
+    # два слова и больше — уже фраза: фразовые глаголы словарь не знает
+    is_text = (len(text.split()) >= 2 or len(text) > 40
                or any(ch in text for ch in ".!?;:"))
     if is_text:
         if len(text) > 1500:
@@ -153,6 +154,11 @@ async def process_translation(message: Message, text: str, db: Database):
     if not found_in_local:
         # словарь не знает слово — спрашиваем ИИ, а не отказываем
         tr, src, extra = await dictionary.translate(text, direction)
+        if src == "none":
+            # словарный промпт не справился — просим свободный перевод
+            free = await dictionary.translate_text(text, direction)
+            if free:
+                tr, src = free, "llm"
         if src != "none":
             note = "\n<i>(машинный перевод)</i>" if src == "llm" else ""
             await message.answer(
