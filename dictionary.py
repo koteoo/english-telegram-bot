@@ -347,14 +347,34 @@ _TEXT_PROMPT = (
 )
 
 
+_LEXICAL_PROMPT = (
+    "You are a bilingual dictionary. The user gives a word or a short phrase "
+    "(possibly a phrasal verb). Translate it {direction}.\n"
+    "Rules:\n"
+    "- Output ONLY the translation, nothing else.\n"
+    "- Verbs MUST be in the infinitive (Russian: -ть/-ти; English: base form). "
+    "Never use the imperative.\n"
+    "- Give up to 3 most common meanings, separated by '; '.\n"
+    "- For phrasal verbs give idiomatic meanings, not word-by-word.\n"
+    "- No examples, no comments, no quotes.\n\n"
+    "Entry: {query}"
+)
+
+
 async def translate_text(text: str, direction: str) -> str | None:
     """Перевод фразы или предложения целиком. None — цепочка недоступна."""
     from chat_engine import ask_llm
     dir_text = ("from Russian into English" if direction == "ru-en"
                 else "from English into Russian")
-    prompt = _TEXT_PROMPT.format(direction=dir_text, query=text[:1500])
+    # словарный ввод (слово или короткая фраза) — инфинитив и значения,
+    # связный текст — обычный перевод
+    t = text.strip()
+    is_sentence = (len(t.split()) > 6 or t.endswith((".", "!", "?"))
+                   or any(ch in t for ch in ",;:"))
+    tmpl = _TEXT_PROMPT if is_sentence else _LEXICAL_PROMPT
+    prompt = tmpl.format(direction=dir_text, query=t[:1500])
     reply = await ask_llm([{"role": "user", "content": prompt}],
-                          temperature=0.2, max_tokens=700)
+                          temperature=0.2, max_tokens=700 if is_sentence else 120)
     if not reply or reply.startswith("__"):
         return None
     return reply.strip()
