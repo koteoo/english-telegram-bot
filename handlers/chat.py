@@ -86,6 +86,15 @@ def _plain(text: str) -> str:
     return t.replace("*", "").replace("`", "").strip()
 
 
+def _split_fix(answer: str) -> tuple[str, str | None]:
+    """Отделить строку FIX: от ответа. Разбор показываем текстом, не озвучиваем."""
+    lines = answer.rstrip().splitlines()
+    fix = None
+    while lines and lines[-1].strip().upper().startswith("FIX:"):
+        fix = lines.pop().strip()[4:].strip()
+    return "\n".join(lines).strip(), fix
+
+
 async def _chat_kb(state: FSMContext):
     """Клавиатура чата: кнопка озвучки только в режиме toggle."""
     if os.getenv("VOICE_REPLY_ENABLED", "off").lower() != "toggle":
@@ -155,8 +164,12 @@ async def _respond(message: Message, state: FSMContext, db: Database, user_text:
     answer = await chat_reply(history, topic_id, level,
                               goal=prof["goal"], cefr=prof["cefr"], voice=voice_in)
     if answer:
+        turn += 1
+        answer, fix = _split_fix(answer)
         history.append({"role": "assistant", "content": answer})
         body = _fmt(answer)
+        if fix:
+            body += "\n\n✏️ <b>Разбор:</b> " + _fmt(fix.replace("->", "→"))
         plain = _plain(answer)
     else:
         offline, turn = local_engine.reply(user_text, topic_id, turn)

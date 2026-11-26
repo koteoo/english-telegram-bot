@@ -53,7 +53,9 @@ def tutor_system_prompt(topic_id: str | None, level: str,
             "The learner is talking to you by voice, so your reply will be spoken aloud. "
             "Use at most 2 short sentences (about 40 words), plain spoken English, "
             "no markdown, no lists, no emoji. Ask one short follow-up question. "
-            "If the learner made a mistake, say the corrected phrase naturally in your reply."
+            "If the learner made a mistake, add a separate FINAL line exactly as\n"
+            "FIX: <what the learner said> -> <correct version>\n"
+            "This line is shown as text and is not spoken aloud. No FIX line if there was no mistake."
         )
     return (
         "You are Gecko, a friendly gecko who works as an English tutor on Telegram. "
