@@ -45,17 +45,23 @@ def tutor_system_prompt(topic_id: str | None, level: str,
         extra += (f" The learner studies English for {GOALS_EN.get(goal, goal)};"
                   " prefer vocabulary and examples relevant to that goal.")
     style = (
-        "Keep replies short (2-4 sentences), always in English, ask a follow-up question, "
-        "gently correct mistakes, and occasionally suggest one useful phrase for the topic."
+        "Keep replies short (2-4 sentences), always in English, warm and natural. "
+        "Ask a follow-up question to keep the conversation going. "
+        "Correct mistakes gently but clearly: first respond naturally to what the learner said, "
+        "then if there was a clear mistake, add a short correction. "
+        "Prefer one main correction per reply. "
+        "Occasionally suggest one useful phrase for the topic. "
+        "If the learner writes in Russian, reply in English and show how to say it correctly."
     )
     if voice:
         style = (
             "The learner is talking to you by voice, so your reply will be spoken aloud. "
             "Use at most 2 short sentences (about 40 words), plain spoken English, "
             "no markdown, no lists, no emoji. Ask one short follow-up question. "
-            "If the learner made a mistake, add a separate FINAL line exactly as\n"
+            "If the learner made a clear mistake, add a separate FINAL line exactly as\n"
             "FIX: <what the learner said> -> <correct version>\n"
-            "This line is shown as text and is not spoken aloud. No FIX line if there was no mistake."
+            "This line is shown as text and is not spoken aloud. No FIX line if there was no mistake. "
+            "Correct only one main thing."
         )
     return (
         "You are Gecko, a friendly gecko who works as an English tutor on Telegram. "
@@ -230,61 +236,81 @@ def _word_count(text: str) -> int:
 
 
 class LocalChatEngine:
-    """Поддерживает диалог по теме без внешних API."""
+    """Поддерживает диалог по теме без внешних API. Более живые и менее шаблонные ответы."""
 
     reactions = [
-        "That's interesting! Tell me more about it.",
-        "Nice! Why do you think so?",
-        "I see 👍 What happened next?",
-        "Good answer! Can you give me an example?",
-        "Wow, sounds great! How did that make you feel?",
+        "That's interesting! Tell me more.",
+        "Nice, I like that. Why do you think so?",
+        "Oh, really? What happened next?",
+        "Good point! Can you give an example?",
+        "Sounds cool! How did that make you feel?",
+        "I see. And then?",
+        "That's a good start. Can you say a bit more?",
     ]
     praise_long = [
-        "Excellent! That was a detailed answer 💪",
+        "Excellent! That was a detailed answer.",
         "Great job — you explained it really well!",
         "Impressive! Your English is getting stronger.",
+        "Nice! You used some good vocabulary there.",
     ]
     encourage_short = [
-        "Good start! Try to add one more detail next time 🙂",
-        "Nice! Now tell me a bit more — why? when? with whom?",
+        "Good start! Try to add one more detail.",
+        "Nice! Tell me a bit more — why or when?",
         "OK! Imagine you're telling a friend — add some details.",
+        "Almost! Can you make it a little longer?",
     ]
     corrections_hint = [
-        "Small tip: after 'I' use 'am', and don't forget articles (a / the).",
+        "Tip: after 'I' we usually say 'am' (I am), and don't forget articles (a/the).",
         "Tip: for past events use Past Simple: 'I went', 'we saw', 'it was'.",
-        "Tip: 'very much' goes at the end: 'I like it very much.'",
+        "Tip: 'very much' usually goes at the end: 'I like it very much.'",
+        "Tip: try to use full sentences — it sounds more natural.",
     ]
+
+    def _has_cyrillic(self, text: str) -> bool:
+        return any(ch in "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" for ch in text.lower())
 
     def reply(self, user_text: str, topic_id: str | None, turn: int) -> tuple[str, int]:
         """Вернуть (ответ_боту, новый_номер_хода)."""
         clean = _clean(user_text)
         words = _word_count(user_text)
+        is_ru = self._has_cyrillic(user_text)
 
         if any(g in clean for g in FAREWELLS):
-            return ("See you soon! 👋 Come back whenever you want to practise English.", turn)
+            return ("See you soon! Come back whenever you want to practise English.", turn)
 
         topic = TOPIC_BY_ID.get(topic_id or "")
 
-        # первое сообщение в теме — реагируем на приветствие и задаём первый вопрос
+        # Приветствие или первый ход
         if turn == 0 or any(g in clean for g in GREETINGS):
             if topic:
-                q = topic["questions"][0]
-                idea = topic_idea(topic, 0)
+                q = random.choice(topic["questions"])
+                idea = topic_idea(topic, random.randint(0, len(topic["ideas"]) - 1))
                 return (
-                    f"Hi! 😊 Let's chat about <b>{topic['emoji']} {topic['title']}</b>.\n\n"
-                    f"💡 Today's idea: <i>{idea}</i>\n\nHere is my first question for you:\n"
-                    f"<b>{q}</b>",
+                    f"Hi! Let's chat about <b>{topic['emoji']} {topic['title']}</b>.\n\n"
+                    f"💡 Idea: <i>{idea}</i>\n\n"
+                    f"Here's a question for you:\n<b>{q}</b>",
                     turn + 1,
                 )
             return (
-                "Hi! 😊 Choose a topic and we'll have a nice chat in English. "
+                "Hi! Choose a topic and we'll have a nice chat in English. "
                 "What would you like to talk about?",
                 turn + 1,
             )
 
         if any(t in clean for t in THANKS) and words <= 3:
             hint = random.choice(self.corrections_hint)
-            return (f"You're welcome! 🙌 {hint} Ready for another question?", turn + 1)
+            return (f"You're welcome! {hint} Ready for another question?", turn + 1)
+
+        # Если пользователь пишет по-русски — помогаем перевести
+        if is_ru:
+            help_line = (
+                "You wrote in Russian. Try saying it in English! "
+                "For example, you can start with: <b>I think...</b> or <b>In my opinion...</b>"
+            )
+            if topic:
+                phrase_en, phrase_ru = random.choice(topic["phrases"])
+                help_line += f"\n\nUseful phrase: <b>{phrase_en}</b>\n<i>({phrase_ru})</i>"
+            return (help_line, turn + 1)
 
         feedback = ""
         if words >= 12:
@@ -293,26 +319,27 @@ class LocalChatEngine:
             feedback = random.choice(self.encourage_short) + "\n\n"
 
         if topic:
-            q_index = min(1 + ((turn - 1) % (len(topic["questions"]) - 1)), len(topic["questions"]) - 1)
-            question = topic["questions"][q_index]
-            idea_idx = (turn - 1) // len(topic["questions"])
-            idea_line = ""
-            if idea_idx > 0 and idea_idx % 2 == 0:
-                idea_line = f"\n💡 New idea: <i>{topic_idea(topic, idea_idx)}</i>\n"
+            # Иногда даём фразу, иногда сразу вопрос — меньше шаблонности
+            give_phrase = random.random() < 0.6
             reaction = random.choice(self.reactions)
-            phrase_en, phrase_ru = random.choice(topic["phrases"])
-            return (
-                f"{feedback}{reaction}\n\n"
-                f"🎓 Useful phrase: <b>{phrase_en}</b>\n<i>({phrase_ru})</i>\n"
-                f"{idea_line}\nMy next question:\n<b>{question}</b>",
-                turn + 1,
-            )
+            question = random.choice(topic["questions"])
 
-        question = random.choice(
-            ["How are you today?", "What did you do yesterday?", "Tell me about your day!"]
-        )
+            parts = [feedback + reaction]
+            if give_phrase:
+                phrase_en, phrase_ru = random.choice(topic["phrases"])
+                parts.append(f"\n🎓 Useful phrase: <b>{phrase_en}</b>\n<i>({phrase_ru})</i>")
+            parts.append(f"\nMy question:\n<b>{question}</b>")
+            return ("".join(parts), turn + 1)
+
+        # Free conversation
+        question = random.choice([
+            "How are you today?",
+            "What did you do yesterday?",
+            "Tell me about your day!",
+            "What are your plans for the weekend?",
+            "What's something interesting that happened recently?",
+        ])
         return (f"{feedback}{random.choice(self.reactions)}\n\nAnd a quick question: <b>{question}</b>", turn + 1)
-
 
 local_engine = LocalChatEngine()
 

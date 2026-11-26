@@ -355,12 +355,18 @@ _TEXT_PROMPT = (
 _LEXICAL_PROMPT = (
     "You are a precise bilingual dictionary (EN↔RU). "
     "Translate the given word or short phrase {direction}.\n"
-    "Strict rules:\n"
-    "- Output ONLY the translation (up to 3 most common meanings, separated by '; ').\n"
-    "- Verbs MUST be in the infinitive form (Russian: -ть/-ти; English: base form). Never imperative.\n"
-    "- Adverbs stay adverbs, adjectives stay adjectives.\n"
-    "- For phrasal verbs give the idiomatic meaning, not literal.\n"
-    "- No examples, no comments, no quotes, no explanations.\n\n"
+    "STRICT RULES:\n"
+    "- Output ONLY the translation. Up to 3 most common meanings, separated by '; '.\n"
+    "- ALL verbs MUST be in the INFINITIVE form only:\n"
+    "  Russian: -ть / -ти (взлетать, снимать, справляться). NEVER imperative (взлетай, сними).\n"
+    "  English: base form (take off, pull off). NEVER conjugated.\n"
+    "- Phrasal verbs: give the main idiomatic meanings, not word-by-word.\n"
+    "  Examples:\n"
+    "  take off → взлетать; снимать\n"
+    "  pull off → срывать; успешно выполнить\n"
+    "  give up → сдаваться; бросать\n"
+    "  look after → присматривать\n"
+    "- No examples in the answer, no comments, no quotes, no explanations.\n\n"
     "Entry: {query}"
 )
 
@@ -371,22 +377,33 @@ async def translate_text(text: str, direction: str) -> str | None:
     dir_text = ("from Russian into English" if direction == "ru-en"
                 else "from English into Russian")
     t = text.strip()
-    is_sentence = (len(t.split()) > 6 or t.endswith((".", "!", "?"))
-                   or any(ch in t for ch in ",;:"))
-    tmpl = _TEXT_PROMPT if is_sentence else _LEXICAL_PROMPT
+    # 1–2 слова → словарный режим (инфинитив),
+    # 3+ слов или с пунктуацией → естественный перевод
+    n_words = len(t.split())
+    is_lexical = n_words <= 2 and not t.endswith((".", "!", "?"))
+    tmpl = _LEXICAL_PROMPT if is_lexical else _TEXT_PROMPT
     prompt = tmpl.format(direction=dir_text, query=t[:1500])
 
     # Первый запрос
     reply = await ask_llm([{"role": "user", "content": prompt}],
-                          temperature=0.2, max_tokens=400 if is_sentence else 150)
+                          temperature=0.2, max_tokens=400 if not is_lexical else 150)
     if reply and not reply.startswith("__"):
         return reply.strip()
 
-    # Повтор с более мягким промптом, если ответ пустой
-    soft = (
-        f"Translate this {dir_text}. Output ONLY the translation, nothing else.\n\n"
-        f"{t}"
-    )
+    # Повтор, если ответ пустой
+    if is_lexical:
+        soft = (
+            f"Translate this {dir_text}. Output ONLY the translation.\n"
+            f"If it is a verb or phrasal verb, use the INFINITIVE form only "
+            f"(Russian -ть/-ти, English base form). Never imperative.\n\n"
+            f"{t}"
+        )
+    else:
+        soft = (
+            f"Translate this naturally {dir_text}, as it would be said in speech. "
+            f"Output ONLY the translation.\n\n"
+            f"{t}"
+        )
     reply = await ask_llm([{"role": "user", "content": soft}],
                           temperature=0.1, max_tokens=400)
     if reply and not reply.startswith("__"):

@@ -10,7 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from db import Database
 import dictionary
-from handlers import start, learning, chat, premium, translate, feedback, referral
+from handlers import start, learning, chat, premium, translate, feedback, referral, admin
 from scheduler import auto_review_loop
 from aiogram.types import BotCommand
 
@@ -29,6 +29,7 @@ async def main() -> None:
     dp.include_router(referral.router)
     dp.include_router(learning.router)  # ВАЖНО: learning ПЕРЕД chat, чтобы кнопки меню работали
     dp.include_router(chat.router)  # чат
+    dp.include_router(admin.router)       # админка (только для ADMIN_USER_ID)
     dp.include_router(translate.router)  # перевод — в самом конце
 
     # команды не регистрируем: список в меню дублирует нижнюю клавиатуру,
