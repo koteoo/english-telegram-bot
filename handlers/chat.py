@@ -94,22 +94,37 @@ async def _chat_kb(state: FSMContext):
     return chat_menu_kb(bool(data.get("voice")))
 
 
-async def _maybe_voice(message: Message, state: FSMContext, db: Database, text: str) -> None:
+async def _maybe_voice(message: Message, state: FSMContext, db: Database, text: str,
+                       voice_in: bool = False) -> None:
     """Озвучить ответ, если режим включён и тариф позволяет."""
     mode = os.getenv("VOICE_REPLY_ENABLED", "off").lower()
     data = await state.get_data()
-    if mode == "off" or (mode == "toggle" and not data.get("voice")):
+    if mode == "off":
+        return
+    # auto: голосом отвечаем только на голосовое, текстом на текст
+    if mode == "auto" and not voice_in:
+        return
+    if mode == "toggle" and not data.get("voice"):
         return
     uid = message.from_user.id
     tier, _ = await db.get_plan(uid)
     # Plus без лимита; Free ограничен суточной квотой
     if tier != "plus" and not await db.within_limit(uid, "voice_out", LIMITS.free_voice_replies_per_day):
+        if not data.get("voice_quota_notified"):
+            await state.update_data(voice_quota_notified=True)
+            await message.answer("🔇 Голосовые ответы на сегодня исчерпаны (лимит Free). Завтра снова будут доступны.")
         return
     import speech
     if not speech.tts_available():
         return
     try:
-        res = await asyncio.to_thread(speech.synthesize, text[:500])
+        # режем по границе предложения, а не посреди слова
+        snippet = text[:700]
+        cut = max(snippet.rfind(". "), snippet.rfind("! "), snippet.rfind("? "))
+        if cut > 200:
+            snippet = snippet[:cut + 1]
+        await message.bot.send_chat_action(chat_id=message.chat.id, action="record_voice")
+        res = await asyncio.to_thread(speech.synthesize, snippet)
     except Exception as exc:
         logger.warning("TTS failed: %s", exc)
         return
@@ -124,7 +139,8 @@ async def _maybe_voice(message: Message, state: FSMContext, db: Database, text: 
         await message.answer_audio(audio=file)
 
 
-async def _respond(message: Message, state: FSMContext, db: Database, user_text: str) -> None:
+async def _respond(message: Message, state: FSMContext, db: Database, user_text: str,
+                   voice_in: bool = False) -> None:
     """Ответ ученику: LLM, при недоступности — офлайн-движок."""
     data = await state.get_data()
     topic_id = data.get("topic")
@@ -149,7 +165,7 @@ async def _respond(message: Message, state: FSMContext, db: Database, user_text:
 
     await state.update_data(turn=turn, history=history[-12:])
     await message.answer(body, parse_mode="HTML", reply_markup=back_topics_kb())
-    await _maybe_voice(message, state, db, plain)
+    await _maybe_voice(message, state, db, plain, voice_in=voice_in)
 
 
 async def cmd_chat(message: Message, state: FSMContext, db: Database) -> None:
@@ -321,7 +337,7 @@ async def chat_voice(message: Message, state: FSMContext, db: Database, bot: Bot
         f"🎙 <i>Распознано:</i> {html.escape(text)}",
         parse_mode="HTML",
     )
-    await _respond(message, state, db, text)
+    await _respond(message, state, db, text, voice_in=True)
 
 
 @router.message(F.voice)
