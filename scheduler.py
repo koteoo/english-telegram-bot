@@ -46,12 +46,18 @@ async def _ping_user(bot: Bot, db: Database, user_id: int, local_hour: int) -> N
     if not due:
         return
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    lines = ["🤖 <b>Время повторить слова!</b>", ""]
+    from ui_lang import ui_ru
+    ru = ui_ru(level)
+    head = "🤖 <b>Время повторить слова!</b>" if ru else "🤖 <b>Time to review your words!</b>"
+    lines = [head, ""]
     for item in due:
         lines.append(f"🃏 <b>{item.word}</b>")
-    lines += ["", "Нажмите «Повторить» — пришлю карточки по одной, с переводом и примером."]
+    tail = ("Нажмите «Повторить» — пришлю карточки по одной, с переводом и примером." if ru
+            else "Tap “Review” — I'll send the cards one by one, with translation and example.")
+    lines += ["", tail]
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🃏 Повторить", callback_data="card:start")]])
+        InlineKeyboardButton(text="🃏 Повторить" if ru else "🃏 Review",
+                             callback_data="card:start")]])
     try:
         await bot.send_message(user_id, "\n".join(lines), parse_mode="HTML", reply_markup=kb)
         from review_queue import set_queue

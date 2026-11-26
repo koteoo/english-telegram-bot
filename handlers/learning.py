@@ -47,16 +47,19 @@ async def _effective_level(db: Database, user_id: int) -> tuple[str, str]:
     return level, level
 
 
-def _word_card(item, hint_only: bool = False) -> str:
+def _word_card(item, hint_only: bool = False, level: str | None = None) -> str:
+    from ui_lang import ui_ru
+    ru = ui_ru(level)
     if hint_only:
-        return (
-            f"🃏 <b>{item.word}</b>\n\n"
-            f"Как переводится? Подумай и нажми кнопку 👇"
-        )
+        ask = ("Как переводится? Подумай и нажми кнопку 👇" if ru
+               else "What does it mean? Think, then tap the button 👇")
+        return f"🃏 <b>{item.word}</b>\n\n{ask}"
+    tr = "💡 Перевод:" if ru else "💡 Translation:"
+    ex = "📝 Пример:" if ru else "📝 Example:"
     return (
         f"🃏 <b>{item.word}</b>\n"
-        f"💡 Перевод: <i>{item.translation}</i>\n\n"
-        f"📝 Пример: <b>{item.example}</b>"
+        f"{tr} <i>{item.translation}</i>\n\n"
+        f"{ex} <b>{item.example}</b>"
     )
 
 
@@ -111,7 +114,7 @@ async def _send_card(message: Message, db: Database, user_id: int) -> bool:
     _card_last[user_id] = item.word
     _card_active[user_id] = (item.word, item.translation, item.example)
     await message.answer(
-        _word_card(item, hint_only=True),
+        _word_card(item, hint_only=True, level=level),
         parse_mode="HTML",
         reply_markup=review_cb(level),
     )
