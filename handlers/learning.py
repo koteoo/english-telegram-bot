@@ -685,11 +685,18 @@ async def _send_placement_question(msg: Message, state: FSMContext, db: Database
         await db.set_level(uid, internal)
         correct = sum(1 for _, ok in answers if ok)
         await state.clear()
+        from ui_lang import ui_ru
+        _ru = ui_ru(internal)
         await msg.answer(
-            f"🎓 <b>Ваш уровень: {cefr}</b>\n"
-            f"Верных ответов: {correct} из {len(answers)}\n"
-            f"Рабочий уровень бота: {LEVEL_NAMES[internal]}\n\n"
-            "Слова и карточки подобраны под него. Пройти тест заново — 🎯 Level.",
+            (f"🎓 <b>Ваш уровень: {cefr}</b>\n"
+             f"Верных ответов: {correct} из {len(answers)}\n"
+             f"Рабочий уровень бота: {LEVEL_NAMES[internal]}\n\n"
+             "Слова и карточки подобраны под него. Пройти тест заново — 🎯 Level.")
+            if _ru else
+            (f"🎓 <b>Your level: {cefr}</b>\n"
+             f"Correct answers: {correct} of {len(answers)}\n"
+             f"Bot working level: {LEVEL_NAMES[internal]}\n\n"
+             "Words and cards are matched to it. Retake the test any time — 🎯 Level."),
             parse_mode="HTML",
             reply_markup=main_menu_kb(),
         )
@@ -711,9 +718,12 @@ async def _send_placement_question(msg: Message, state: FSMContext, db: Database
                      ".%20А%20у%20тебя%3F")
             await msg.answer_photo(
                 BufferedInputFile(png, filename="level.png"),
-                caption=(f"🎓 {cefr} — карточка готова.\n"
-                         "Перешлите её другу или отправьте ссылку кнопкой ниже: "
-                         "за приглашение вам придут дни Plus."),
+                caption=((f"🎓 {cefr} — карточка готова.\n"
+                          "Перешлите её другу или отправьте ссылку кнопкой ниже: "
+                          "за приглашение вам придут дни Plus.") if _ru else
+                         (f"🎓 {cefr} — your card is ready.\n"
+                          "Forward it to a friend or share the link below: "
+                          "invites earn you Plus days.")),
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="📤 Поделиться ссылкой", url=share)]]),
             )
@@ -725,8 +735,11 @@ async def _send_placement_question(msg: Message, state: FSMContext, db: Database
     _level, text, _opts, _c = placement.QUESTIONS[q_index]
     opts, correct_idx = placement.options_shuffled(q_index, seed)
     await state.update_data(correct=correct_idx)
+    from ui_lang import ui_ru
+    _ru = ui_ru(await db.get_level(user_id))
     await msg.answer(
-        f"Вопрос <b>{pos + 1}/{len(ids)}</b>\n\n{text}",
+        (f"Вопрос <b>{pos + 1}/{len(ids)}</b>" if _ru
+         else f"Question <b>{pos + 1}/{len(ids)}</b>") + f"\n\n{text}",
         parse_mode="HTML",
         reply_markup=placement_kb(opts),
     )
@@ -786,7 +799,10 @@ async def placement_answer(call: CallbackQuery, state: FSMContext, db: Database)
     ok = int(call.data.split(":", 1)[1]) == int(data.get("correct", -1))
     answers = list(data["answers"]) + [[level, ok]]
     await state.update_data(answers=answers, pos=pos + 1)
-    await call.answer("Верно ✅" if ok else "Неверно ❌")
+    from ui_lang import ui_ru
+    _ru = ui_ru(await db.get_level(call.from_user.id))
+    await call.answer(("Верно ✅" if ok else "Неверно ❌") if _ru
+                      else ("Correct ✅" if ok else "Not quite ❌"))
     await _send_placement_question(call.message, state, db, call.from_user.id)
 
 
