@@ -316,10 +316,30 @@ class LocalChatEngine:
 
 local_engine = LocalChatEngine()
 
-# === Заглушка для совместимости со старым dictionary.py ===
 async def ask_llm(messages: list, temperature: float = 0.7, max_tokens: int = 100) -> str | None:
-    """Временная заглушка, чтобы старый dictionary.py не падал при импорте."""
-    return None
+    """Один запрос к цепочке провайдеров. None — все недоступны."""
+    import asyncio
+    if not llm_available():
+        return None
+    system = "\n".join(m.get("content", "") for m in messages if m.get("role") == "system")
+    user = "\n".join(m.get("content", "") for m in messages if m.get("role") != "system")
+    if not user.strip():
+        return None
+
+    def _call() -> str | None:
+        for p in _providers:
+            if not p.available():
+                continue
+            try:
+                return p.ask(system or "You are a helpful assistant.", user,
+                             max_tokens=max_tokens)
+            except Exception as exc:  # noqa: BLE001
+                p.cooldown(COOLDOWN_SEC if _is_limit_error(exc) else 60)
+                logger.warning("ask_llm %s: %s", p.name, exc)
+                continue
+        return None
+
+    return await asyncio.to_thread(_call)
 
 
 async def chat_reply(history: list[dict], topic_id: str | None, level: str,
