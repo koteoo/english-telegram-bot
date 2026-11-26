@@ -340,23 +340,27 @@ async def _llm_translate(query: str, direction: str) -> tuple[str, str] | None:
 
 
 _TEXT_PROMPT = (
-    "You are a translation engine. Translate the user's text {direction}.\n"
-    "Output ONLY the translation: no comments, no quotes, no explanations.\n"
-    "Preserve meaning, tone and punctuation. Keep names and numbers unchanged.\n\n"
+    "You are a professional translator. Translate the following short text {direction}.\n"
+    "Rules:\n"
+    "- Output ONLY the natural, idiomatic translation.\n"
+    "- Preserve meaning, tone, punctuation and names/numbers.\n"
+    "- Follow target-language grammar strictly "
+    "(Russian: correct cases, gender, aspect; English: articles, word order, tense).\n"
+    "- Prefer natural phrasing over word-for-word.\n"
+    "- No comments, no quotes, no explanations.\n\n"
     "Text:\n{query}"
 )
 
 
 _LEXICAL_PROMPT = (
-    "You are a bilingual dictionary. The user gives a word or a short phrase "
-    "(possibly a phrasal verb). Translate it {direction}.\n"
-    "Rules:\n"
-    "- Output ONLY the translation, nothing else.\n"
-    "- Verbs MUST be in the infinitive (Russian: -ть/-ти; English: base form). "
-    "Never use the imperative.\n"
-    "- Give up to 3 most common meanings, separated by '; '.\n"
-    "- For phrasal verbs give idiomatic meanings, not word-by-word.\n"
-    "- No examples, no comments, no quotes.\n\n"
+    "You are a precise bilingual dictionary (EN↔RU). "
+    "Translate the given word or short phrase {direction}.\n"
+    "Strict rules:\n"
+    "- Output ONLY the translation (up to 3 most common meanings, separated by '; ').\n"
+    "- Verbs MUST be in the infinitive form (Russian: -ть/-ти; English: base form). Never imperative.\n"
+    "- Adverbs stay adverbs, adjectives stay adjectives.\n"
+    "- For phrasal verbs give the idiomatic meaning, not literal.\n"
+    "- No examples, no comments, no quotes, no explanations.\n\n"
     "Entry: {query}"
 )
 

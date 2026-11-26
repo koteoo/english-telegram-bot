@@ -75,6 +75,19 @@ async def cmd_cancel_translate(message: Message, state: FSMContext):
     )
 
 
+
+def _classify_input(text: str) -> str:
+    """Возвращает: 'word' | 'short' | 'long'."""
+    t = text.strip()
+    words = t.split()
+    n = len(words)
+    length = len(t)
+    if n > 15 or length > 150:
+        return "long"
+    if n == 1 and not any(c in t for c in ".!?;:,"):
+        return "word"
+    return "short"
+
 async def process_translation(message: Message, text: str, db: Database):
     uid = message.from_user.id
     tier, _ = await db.get_plan(uid)
@@ -88,74 +101,39 @@ async def process_translation(message: Message, text: str, db: Database):
         return
     await db.incr_usage(uid, "translate")
 
-    """Основная функция перевода."""
-    # 1. Локальный поиск через обновленную функцию
+    import html as _html
     has_cyr = any(ch in "абвгдеёжзийклмнопрстуфхцчшщъыьэюя" for ch in text.lower())
     direction = "ru-en" if has_cyr else "en-ru"
-    import html as _html
-    # фраза или предложение — переводим целиком, а не по словарю
-    # два слова и больше — уже фраза: фразовые глаголы словарь не знает
-    is_text = (len(text.split()) >= 2 or len(text) > 40
-               or any(ch in text for ch in ".!?;:"))
-    if is_text:
-        if len(text) > 1500:
-            await message.answer("✂️ Слишком длинный текст. Пришлите до 1500 символов.",
-                                 reply_markup=translate_menu_kb())
-            return
-        res = await dictionary.translate_text(text, direction)
-        if res:
-            flag = "🇬🇧" if direction == "ru-en" else "🇷🇺"
-            await message.answer(
-                f"{flag} {_html.escape(res)}\n\n"
-                f"<i>➡️ Пришлите следующий текст или нажмите 🏠 Main menu</i>",
-                parse_mode="HTML", reply_markup=translate_menu_kb())
-            return
+
+    kind = _classify_input(text)
+
+    if kind == "long":
         await message.answer(
-            "😅 Перевод сейчас недоступен. Попробуйте через минуту.",
-            reply_markup=translate_menu_kb())
-        return
-    if direction == "ru-en":
-        result_tuple = dictionary.ru_en_multi(text)
-    else:
-        result_tuple = dictionary.en_ru_lookup(text)
-    
-    if result_tuple:
-        translation_str, source_str = result_tuple
-        
-        translated = translation_str[:1].upper() + translation_str[1:]
-        response = f"<b>{text}</b> → {translated}"
-        
-        # Добавляем подсказку о источнике, если нужно
-        if source_str == "RuEnDict":
-            response += "\n<i>(из словаря Мюллера)</i>"
-            
-        response += "\n\n<i>➡️ Введите следующее слово или нажмите 🏠 Main menu</i>"
-        
-        await message.answer(response, parse_mode="HTML", reply_markup=translate_menu_kb())
+            "📏 Текст довольно длинный.\n\n"
+            "Для перевода предложений и текстов лучше перейти в режим разговора:\n"
+            "нажми «🗣 Chat with me» — там бот переведёт и поддержит беседу.",
+            reply_markup=translate_menu_kb(),
+        )
         return
 
-    # 2. Fallback: ищем во встроенном словаре
-    word_lower = text.lower()
-    found_in_local = False
-    for level_words in VOCABULARY.values():
-        for w, t, e in level_words:
-            if w.lower() == word_lower:
-                response = f"🇬🇧 <b>{w.capitalize()}</b>\n\n🇷🇺 {t.capitalize()}"
-                if e:
-                    response += f"\n\n💬 <i>{e}</i>"
-                response += "\n\n<i>➡️ Введите следующее слово или нажмите 🏠 Main menu</i>"
-                await message.answer(response, parse_mode="HTML", reply_markup=translate_menu_kb())
-                found_in_local = True
-                break
-        if found_in_local:
-            break
+    if kind == "word":
+        if direction == "ru-en":
+            result_tuple = dictionary.ru_en_multi(text)
+        else:
+            result_tuple = dictionary.en_ru_lookup(text)
 
-    # 3. Если ничего не найдено
-    if not found_in_local:
-        # словарь не знает слово — спрашиваем ИИ, а не отказываем
+        if result_tuple:
+            translation_str, source_str = result_tuple
+            translated = translation_str[:1].upper() + translation_str[1:]
+            response = f"<b>{_html.escape(text)}</b> → {translated}"
+            if source_str == "RuEnDict":
+                response += "\n<i>(из словаря Мюллера)</i>"
+            response += "\n\n<i>➡️ Введите следующее слово или нажмите 🏠 Main menu</i>"
+            await message.answer(response, parse_mode="HTML", reply_markup=translate_menu_kb())
+            return
+
         tr, src, extra = await dictionary.translate(text, direction)
         if src == "none":
-            # словарный промпт не справился — просим свободный перевод
             free = await dictionary.translate_text(text, direction)
             if free:
                 tr, src = free, "llm"
@@ -166,10 +144,24 @@ async def process_translation(message: Message, text: str, db: Database):
                 f"<i>➡️ Введите следующее слово или нажмите 🏠 Main menu</i>",
                 parse_mode="HTML", reply_markup=translate_menu_kb())
             return
+
         await message.answer(
             f"❌ Не удалось найти перевод для '{_html.escape(text)}'.\n"
-            f"Проверьте правильность написания.\n\n"
-            f"<i>➡️ Попробуйте другое слово или нажмите 🏠 Main menu</i>",
-            parse_mode="HTML",
-            reply_markup=translate_menu_kb()
-        )
+            "Проверьте написание.\n\n"
+            "<i>➡️ Попробуйте другое слово или нажмите 🏠 Main menu</i>",
+            parse_mode="HTML", reply_markup=translate_menu_kb())
+        return
+
+    # short phrase / sentence
+    res = await dictionary.translate_text(text, direction)
+    if res:
+        flag = "🇬🇧" if direction == "ru-en" else "🇷🇺"
+        await message.answer(
+            f"{flag} {_html.escape(res)}\n\n"
+            f"<i>➡️ Пришлите следующий текст или нажмите 🏠 Main menu</i>",
+            parse_mode="HTML", reply_markup=translate_menu_kb())
+        return
+
+    await message.answer(
+        "😅 Перевод сейчас недоступен. Попробуйте через минуту.",
+        reply_markup=translate_menu_kb())
