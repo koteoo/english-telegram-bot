@@ -164,6 +164,8 @@ async def _respond(message: Message, state: FSMContext, db: Database, user_text:
         plain = _plain(offline)
 
     await state.update_data(turn=turn, history=history[-12:])
+    await db.save_chat_state(message.from_user.id, topic_id, turn,
+                             history[-12:], bool(data.get("voice")))
     await message.answer(body, parse_mode="HTML", reply_markup=back_topics_kb())
     await _maybe_voice(message, state, db, plain, voice_in=voice_in)
 
@@ -171,7 +173,9 @@ async def _respond(message: Message, state: FSMContext, db: Database, user_text:
 async def cmd_chat(message: Message, state: FSMContext, db: Database) -> None:
     """Вход в режим чата."""
     await state.set_state(ChatStates.in_chat)
-    await state.update_data(topic=None, turn=0, history=[])
+    saved = await db.get_chat_state(message.from_user.id)
+    await state.update_data(topic=saved["topic"], turn=saved["turn"],
+                            history=saved["history"], voice=saved["voice"])
     text = (
         "🗣 <b>Давай попрактикуем английский!</b>\n\n"
         "Пиши мне на английском — я поддержу разговор.\n"
@@ -288,10 +292,13 @@ async def chat_help(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ChatStates.in_chat, F.text.in_({"🎙 Voice reply: on", "🔇 Voice reply: off"}))
-async def chat_voice_toggle(message: Message, state: FSMContext) -> None:
+async def chat_voice_toggle(message: Message, state: FSMContext, db: Database) -> None:
     data = await state.get_data()
     new = not bool(data.get("voice"))
     await state.update_data(voice=new)
+    saved = await db.get_chat_state(message.from_user.id)
+    await db.save_chat_state(message.from_user.id, saved["topic"], saved["turn"],
+                             saved["history"], new)
     await message.answer(
         "🎙 Озвучка ответов включена." if new else "🔇 Озвучка ответов выключена.",
         reply_markup=await _chat_kb(state),

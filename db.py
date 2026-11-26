@@ -129,6 +129,18 @@ CREATE INDEX IF NOT EXISTS idx_ref_inviter ON referrals(inviter_id);
 """
 
 
+_CHAT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS chat_state (
+    user_id    INTEGER PRIMARY KEY,
+    topic      TEXT,
+    turn       INTEGER NOT NULL DEFAULT 0,
+    history    TEXT NOT NULL DEFAULT '[]',
+    voice      INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT
+);
+"""
+
+
 class Database:
     def __init__(self, path: str = DB_PATH):
         self.path = path
@@ -142,6 +154,7 @@ class Database:
         await self._db.executescript(_PAYMENTS_SCHEMA)
         await self._db.executescript(_FEEDBACK_SCHEMA)
         await self._db.executescript(_REFERRAL_SCHEMA)
+        await self._db.executescript(_CHAT_SCHEMA)
         # миграция: источник прихода (для уже существующих — direct)
         cur = await self._db.execute("PRAGMA table_info(referrals)")
         rcols = {r[1] for r in await cur.fetchall()}
@@ -532,6 +545,41 @@ class Database:
             await self.add_usage(user_id, "practice_sec", int(gap))
 
     # ---------------- Профиль: CEFR и цель ----------------
+    async def get_chat_state(self, user_id: int) -> dict:
+        """Состояние разговора между сессиями: тема, ход, история, озвучка."""
+        assert self._db
+        import json as _json
+        cur = await self._db.execute(
+            "SELECT topic, turn, history, voice FROM chat_state WHERE user_id = ?",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return {"topic": None, "turn": 0, "history": [], "voice": False}
+        try:
+            hist = _json.loads(row[2] or "[]")
+        except Exception:
+            hist = []
+        return {"topic": row[0], "turn": row[1] or 0,
+                "history": hist[-12:], "voice": bool(row[3])}
+
+    async def save_chat_state(self, user_id: int, topic, turn: int,
+                              history: list, voice: bool) -> None:
+        assert self._db
+        import json as _json
+        await self._db.execute(
+            """INSERT INTO chat_state (user_id, topic, turn, history, voice, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 topic = excluded.topic, turn = excluded.turn,
+                 history = excluded.history, voice = excluded.voice,
+                 updated_at = excluded.updated_at""",
+            (user_id, topic, int(turn),
+             _json.dumps(history[-12:], ensure_ascii=False),
+             1 if voice else 0, _now().isoformat()),
+        )
+        await self._db.commit()
+
     async def get_profile(self, user_id: int) -> dict:
         assert self._db
         cur = await self._db.execute(
