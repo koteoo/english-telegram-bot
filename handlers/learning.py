@@ -82,7 +82,11 @@ async def word_of_day(message: Message, db: Database) -> None:
     )
     await db.incr_usage(message.from_user.id, "words")
     lock_note = ""
-    text = _word_card(item) + ("\n\n➕ Добавлено в твою колоду для повторения!" if added else "") + lock_note
+    from ui_lang import ui_ru
+    _ru = ui_ru(eff_level)
+    _note = ("\n\n➕ Добавлено в твою колоду для повторения!" if _ru
+             else "\n\n➕ Added to your review deck!")
+    text = _word_card(item, level=eff_level) + (_note if added else "") + lock_note
     await message.answer(text, parse_mode="HTML")
 
 
@@ -355,6 +359,8 @@ async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> N
     if not q:
         await call.answer("Вопрос не найден", show_alert=True)
         return
+    from ui_lang import ui_ru
+    ru = ui_ru(await db.get_level(call.from_user.id))
     correct = q[4]
     right_word = q[2] if correct == "A" else q[3]
     if choice == correct:
@@ -362,10 +368,11 @@ async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> N
         _quiz_streak[call.from_user.id] = streak
         record = await db.update_quiz_result(call.from_user.id, streak)
         await call.message.edit_text(
-            "✅ <b>Верно</b>\n\n" + _html.escape(text) + "\n\n"
-            + f"Ответ: <b>{_html.escape(right_word)}</b>\n"
-            + f"🔥 Серия: <b>{streak}</b>"
-            + ("\n\n🏆 Новый рекорд квиза!" if record else ""),
+            ("✅ <b>Верно</b>\n\n" if ru else "✅ <b>Correct</b>\n\n")
+            + _html.escape(text) + "\n\n"
+            + ("Ответ: " if ru else "Answer: ") + f"<b>{_html.escape(right_word)}</b>\n"
+            + ("🔥 Серия: " if ru else "🔥 Streak: ") + f"<b>{streak}</b>"
+            + (("\n\n🏆 Новый рекорд квиза!" if ru else "\n\n🏆 New quiz record!") if record else ""),
             parse_mode="HTML",
         )
     else:
@@ -373,10 +380,11 @@ async def quiz_answer(call: CallbackQuery, db: Database, state: FSMContext) -> N
         chosen = q[2] if choice == "A" else q[3]
         lost = _quiz_streak.pop(call.from_user.id, 0)
         await call.message.edit_text(
-            "❌ <b>Неверно</b>\n\n" + _html.escape(text) + "\n\n"
-            + f"Ваш ответ: {_html.escape(chosen)}\n"
-            + f"Правильный: <b>{_html.escape(right_word)}</b>\n"
-            + (f"\nСерия из {lost} прервана." if lost else ""),
+            ("❌ <b>Неверно</b>\n\n" if ru else "❌ <b>Not quite</b>\n\n")
+            + _html.escape(text) + "\n\n"
+            + ("Ваш ответ: " if ru else "Your answer: ") + f"{_html.escape(chosen)}\n"
+            + ("Правильный: " if ru else "Correct: ") + f"<b>{_html.escape(right_word)}</b>\n"
+            + ((f"\nСерия из {lost} прервана." if ru else f"\nStreak of {lost} lost.") if lost else ""),
             parse_mode="HTML",
         )
     await call.answer()
