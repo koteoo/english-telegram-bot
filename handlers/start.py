@@ -10,7 +10,7 @@ from db import Database
 
 WELCOME_HTML = (
     "🦎 Привет! Я <b>Gecko</b> — ваш репетитор по английскому.\n\n"
-    "Нажмите 🎯 <b>Level</b>: тест за 2 минуты подберёт слова под ваш уровень.\n"
+    "Начнём с уровня: пройдите тест за 2 минуты или выберите уровень сами — кнопки ниже.\n"
     "Ошибаться можно и нужно — поправлю мягко и объясню.\n\n"
     '🆓 Каждый день бесплатно · 💠 без лимитов — '
     '<a href="https://t.me/EngXbot?start=plus">Plus</a>'
@@ -71,10 +71,11 @@ async def cmd_start(message: Message, db: Database, state: FSMContext) -> None:
                 "и получите несколько дней Plus в подарок."
             )
 
+    from keyboards import level_sub_kb
     await message.answer(
         WELCOME_HTML,
         parse_mode="HTML",
-        reply_markup=main_menu_kb(),
+        reply_markup=level_sub_kb(),
     )
 
 
