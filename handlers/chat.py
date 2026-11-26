@@ -207,6 +207,27 @@ async def cb_topics(call: CallbackQuery, db: Database) -> None:
     await _show_topics(call.message, db, call.from_user.id)
 
 
+async def _invite_line(db: Database, uid: int, level: str) -> str:
+    """Приглашение к разговору на языке уровня. Про голос — только если он доступен."""
+    import speech
+    voice_ok = (os.getenv("VOICE_REPLY_ENABLED", "off").lower() != "off"
+                and speech.stt_available() and speech.tts_available())
+    if voice_ok:
+        tier, _ = await db.get_plan(uid)
+        if tier != "plus" and not await db.within_limit(
+                uid, "voice_out", LIMITS.free_voice_replies_per_day):
+            voice_ok = False
+    if level == "beginner":
+        if voice_ok:
+            return ("О чём поговорим? Напишите по-английски или отправьте голосовое — "
+                    "я отвечу голосом и поддержу разговор.")
+        return "О чём поговорим? Напишите по-английски — я поддержу разговор."
+    if voice_ok:
+        return ("What shall we talk about? Write in English or send a voice message — "
+                "I'll reply with voice and keep the conversation going.")
+    return "What shall we talk about? Write in English and I'll keep the conversation going."
+
+
 @router.callback_query(F.data.startswith("topic:"))
 async def cb_topic_pick(call: CallbackQuery, db: Database, state: FSMContext) -> None:
     topic_id = call.data.split(":", 1)[1]
@@ -219,19 +240,23 @@ async def cb_topic_pick(call: CallbackQuery, db: Database, state: FSMContext) ->
     await state.set_state(ChatStates.in_chat)
     await state.update_data(topic=tid, turn=0, history=[])
     await call.answer()
+    level = await db.get_level(call.from_user.id)
+    beginner = level == "beginner"
+    invite = await _invite_line(db, call.from_user.id, level)
     if topic:
         en, ru = topic["phrases"][0]
+        # описание и перевод фразы — только для начинающих, остальным всё по-английски
+        desc = f"<i>{topic['description']}</i>\n\n" if beginner else ""
+        trans = f"\n<i>({ru})</i>" if beginner else ""
         await call.message.answer(
-            f"{topic['emoji']} <b>{topic['title']}</b>\n<i>{topic['description']}</i>\n\n"
+            f"{topic['emoji']} <b>{topic['title']}</b>\n{desc}"
             f"💡 Idea: <i>{topic_idea(topic, 0)}</i>\n\n"
-            f"🎓 Useful phrase:\n<b>{en}</b>\n<i>({ru})</i>\n\n"
-            "О чём поговорим? Напишите по-английски — я поддержу разговор.",
+            f"🎓 Useful phrase:\n<b>{en}</b>{trans}\n\n" + invite,
             parse_mode="HTML", reply_markup=await _chat_kb(state),
         )
     else:
         await call.message.answer(
-            "🆓 <b>Free conversation</b>\n\n"
-            "О чём поговорим? Напишите по-английски — я поддержу разговор.",
+            "🆓 <b>Free conversation</b>\n\n" + invite,
             parse_mode="HTML", reply_markup=await _chat_kb(state),
         )
     # стартовая реплика офлайн-движка не нужна: тема и идея уже показаны выше
