@@ -33,7 +33,8 @@ THANKS = {"thanks", "thank you", "ok", "okay", "great", "cool", "nice"}
 # ------------------------- LLM-режим: цепочка провайдеров -------------------------
 
 def tutor_system_prompt(topic_id: str | None, level: str,
-                        goal: str | None = None, cefr: str | None = None) -> str:
+                        goal: str | None = None, cefr: str | None = None,
+                        voice: bool = False) -> str:
     """Инструкция тьютора: тема, уровень, а также цель и ступень CEFR из профиля."""
     from placement import GOALS_EN, CEFR_STYLE
     topic_name = TOPIC_BY_ID[topic_id]["title"] if topic_id in TOPIC_BY_ID else "free conversation"
@@ -43,11 +44,23 @@ def tutor_system_prompt(topic_id: str | None, level: str,
     if goal:
         extra += (f" The learner studies English for {GOALS_EN.get(goal, goal)};"
                   " prefer vocabulary and examples relevant to that goal.")
-    return (
-        "You are a friendly English tutor chatting with a learner on Telegram. "
-        f"The learner's level is {level}.{extra} Current topic: {topic_name}. "
+    style = (
         "Keep replies short (2-4 sentences), always in English, ask a follow-up question, "
         "gently correct mistakes, and occasionally suggest one useful phrase for the topic."
+    )
+    if voice:
+        style = (
+            "The learner is talking to you by voice, so your reply will be spoken aloud. "
+            "Use at most 2 short sentences (about 40 words), plain spoken English, "
+            "no markdown, no lists, no emoji. Ask one short follow-up question. "
+            "If the learner made a mistake, say the corrected phrase naturally in your reply."
+        )
+    return (
+        "You are Gecko, a friendly gecko who works as an English tutor on Telegram. "
+        "Speak in first person, warm and encouraging; never mock the learner. "
+        "Your name is Gecko - mention it only if asked, no lizard jokes. "
+        f"The learner's level is {level}.{extra} Current topic: {topic_name}. "
+        + style
     )
 
 
@@ -97,8 +110,9 @@ class Provider:
             return data["choices"][0]["message"]["content"].strip()
 
     def reply(self, history: list[dict], topic_id: str | None, level: str,
-              goal: str | None = None, cefr: str | None = None) -> str:
-        system = tutor_system_prompt(topic_id, level, goal, cefr)
+              goal: str | None = None, cefr: str | None = None,
+              voice: bool = False) -> str:
+        system = tutor_system_prompt(topic_id, level, goal, cefr, voice)
         
         # --- Динамическое окно контекста ---
         MAX_CONTEXT_CHARS = 2500
@@ -179,7 +193,8 @@ def active_provider_name() -> str | None:
 
 
 def _llm_reply(history: list[dict], topic_id: str | None, level: str,
-               goal: str | None = None, cefr: str | None = None) -> str:
+               goal: str | None = None, cefr: str | None = None,
+               voice: bool = False) -> str:
     """Синхронный вызов LLM с failover по цепочке (запускается в executor).
 
     Поднимает RuntimeError, если ни один провайдер не ответил, —
@@ -190,7 +205,7 @@ def _llm_reply(history: list[dict], topic_id: str | None, level: str,
         if not p.available():
             continue
         try:
-            return p.reply(history, topic_id, level, goal, cefr)
+            return p.reply(history, topic_id, level, goal, cefr, voice)
         except Exception as exc:  # noqa: BLE001
             if _is_limit_error(exc):
                 p.cooldown(COOLDOWN_SEC)
@@ -306,13 +321,14 @@ async def ask_llm(messages: list, temperature: float = 0.7, max_tokens: int = 10
 
 
 async def chat_reply(history: list[dict], topic_id: str | None, level: str,
-                     goal: str | None = None, cefr: str | None = None) -> str | None:
+                     goal: str | None = None, cefr: str | None = None,
+                     voice: bool = False) -> str | None:
     """LLM с failover. None — цепочка недоступна, вызывающий уходит в офлайн."""
     import asyncio
     if not llm_available():
         return None
     try:
-        return await asyncio.to_thread(_llm_reply, history, topic_id, level, goal, cefr)
+        return await asyncio.to_thread(_llm_reply, history, topic_id, level, goal, cefr, voice)
     except Exception as exc:
         logger.warning("LLM chain failed: %s", exc)
         return None
