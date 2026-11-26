@@ -370,18 +370,29 @@ async def translate_text(text: str, direction: str) -> str | None:
     from chat_engine import ask_llm
     dir_text = ("from Russian into English" if direction == "ru-en"
                 else "from English into Russian")
-    # словарный ввод (слово или короткая фраза) — инфинитив и значения,
-    # связный текст — обычный перевод
     t = text.strip()
     is_sentence = (len(t.split()) > 6 or t.endswith((".", "!", "?"))
                    or any(ch in t for ch in ",;:"))
     tmpl = _TEXT_PROMPT if is_sentence else _LEXICAL_PROMPT
     prompt = tmpl.format(direction=dir_text, query=t[:1500])
+
+    # Первый запрос
     reply = await ask_llm([{"role": "user", "content": prompt}],
-                          temperature=0.2, max_tokens=700 if is_sentence else 120)
-    if not reply or reply.startswith("__"):
-        return None
-    return reply.strip()
+                          temperature=0.2, max_tokens=400 if is_sentence else 150)
+    if reply and not reply.startswith("__"):
+        return reply.strip()
+
+    # Повтор с более мягким промптом, если ответ пустой
+    soft = (
+        f"Translate this {dir_text}. Output ONLY the translation, nothing else.\n\n"
+        f"{t}"
+    )
+    reply = await ask_llm([{"role": "user", "content": soft}],
+                          temperature=0.1, max_tokens=400)
+    if reply and not reply.startswith("__"):
+        return reply.strip()
+
+    return None
 
 
 def local_lookup(word: str, direction: str) -> tuple[str, str] | None:
