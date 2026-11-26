@@ -224,17 +224,17 @@ async def cb_topic_pick(call: CallbackQuery, db: Database, state: FSMContext) ->
         await call.message.answer(
             f"{topic['emoji']} <b>{topic['title']}</b>\n<i>{topic['description']}</i>\n\n"
             f"💡 Idea: <i>{topic_idea(topic, 0)}</i>\n\n"
-            f"🎓 Useful phrase:\n<b>{en}</b>\n<i>({ru})</i>",
+            f"🎓 Useful phrase:\n<b>{en}</b>\n<i>({ru})</i>\n\n"
+            "О чём поговорим? Напишите по-английски — я поддержу разговор.",
             parse_mode="HTML", reply_markup=await _chat_kb(state),
         )
     else:
         await call.message.answer(
-            "🆓 <b>Free conversation</b>\n\nПиши на английском — я поддержу разговор.",
+            "🆓 <b>Free conversation</b>\n\n"
+            "О чём поговорим? Напишите по-английски — я поддержу разговор.",
             parse_mode="HTML", reply_markup=await _chat_kb(state),
         )
-    reply, turn = local_engine.reply("hello", tid, 0)
-    await state.update_data(turn=turn)
-    await call.message.answer(reply, parse_mode="HTML", reply_markup=back_topics_kb())
+    # стартовая реплика офлайн-движка не нужна: тема и идея уже показаны выше
 
 
 @router.message(ChatStates.in_chat, F.text == "💬 Change topic")
