@@ -339,6 +339,27 @@ async def _llm_translate(query: str, direction: str) -> tuple[str, str] | None:
     return None
 
 
+_TEXT_PROMPT = (
+    "You are a translation engine. Translate the user's text {direction}.\n"
+    "Output ONLY the translation: no comments, no quotes, no explanations.\n"
+    "Preserve meaning, tone and punctuation. Keep names and numbers unchanged.\n\n"
+    "Text:\n{query}"
+)
+
+
+async def translate_text(text: str, direction: str) -> str | None:
+    """Перевод фразы или предложения целиком. None — цепочка недоступна."""
+    from chat_engine import ask_llm
+    dir_text = ("from Russian into English" if direction == "ru-en"
+                else "from English into Russian")
+    prompt = _TEXT_PROMPT.format(direction=dir_text, query=text[:1500])
+    reply = await ask_llm([{"role": "user", "content": prompt}],
+                          temperature=0.2, max_tokens=700)
+    if not reply or reply.startswith("__"):
+        return None
+    return reply.strip()
+
+
 def local_lookup(word: str, direction: str) -> tuple[str, str] | None:
     _load_ruedict_sync()
     # Жесткая нормализация ввода: lower, strip, удаление пунктуации по краям
